@@ -1,6 +1,6 @@
 import streamlit as st
 import streamlit.components.v1 as components
-import sqlite3
+import psycopg2
 import pandas as pd
 import time
 import os
@@ -31,20 +31,29 @@ except Exception as e:
     st.error(f"Erro ao carregar o CSS: {e}")
 
 # ==========================================
-# INÍCIO DO MÓDULO: INFRAESTRUTURA DE DADOS
+# INÍCIO DO MÓDULO: INFRAESTRUTURA DE DADOS (POSTGRESQL NEON DB)
 # ==========================================
+def get_db_connection():
+    # Conecta usando a chave secreta guardada no secrets.toml ou no servidor em nuvem
+    return psycopg2.connect(st.secrets["DATABASE_URL"])
+
 def inicializar_banco():
-    conn = sqlite3.connect('app_financas.db')
+    conn = get_db_connection()
     cursor = conn.cursor()
+    # PostgreSQL usa SERIAL em vez de AUTOINCREMENT
     cursor.execute('''CREATE TABLE IF NOT EXISTS categorias 
-                      (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL, tipo TEXT NOT NULL)''')
+                      (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, tipo TEXT NOT NULL)''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS classificacoes 
-                      (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL, id_categoria INTEGER NOT NULL, 
+                      (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, id_categoria INTEGER NOT NULL, 
                        FOREIGN KEY (id_categoria) REFERENCES categorias (id))''')
     conn.commit()
     conn.close()
 
-inicializar_banco()
+try:
+    inicializar_banco()
+except Exception as e:
+    st.error("Erro ao conectar no banco de dados em nuvem. Verifique o secrets.toml.")
+    st.stop()
 
 # ==========================================
 # INÍCIO DO MÓDULO: NAVEGAÇÃO WEB (ENTER PARA TAB) E MENSAGENS
@@ -122,11 +131,12 @@ with st.sidebar:
         st.rerun()
 
 # ==========================================
-# FUNÇÕES DE APOIO (DATABASE)
+# FUNÇÕES DE APOIO (DATABASE POSTGRESQL)
 # ==========================================
 def db_query(query, params=(), is_select=True):
-    conn = sqlite3.connect('app_financas.db')
+    conn = get_db_connection()
     if is_select:
+        # PostgreSQL usa %s como marcador de parâmetro, não mais ?
         res = pd.read_sql_query(query, conn, params=params)
         conn.close()
         return res
@@ -139,17 +149,21 @@ def db_query(query, params=(), is_select=True):
 # MÓDULO: CATEGORIAS
 # ==========================================
 def carregar_dados(pesquisa="", natureza="Todas as naturezas"):
-    query = "SELECT id, nome as 'Nome da categoria', tipo as 'Natureza' FROM categorias WHERE 1=1"
+    query = "SELECT id, nome as \"Nome da categoria\", tipo as \"Natureza\" FROM categorias WHERE 1=1"
     params = []
     if pesquisa:
-        query += " AND nome LIKE ?"
+        # ILIKE no PostgreSQL ignora maiúsculas e minúsculas
+        query += " AND nome ILIKE %s"
         params.append(f"%{pesquisa}%")
     if natureza == "Receita": query += " AND tipo = 'Receita'"
     elif natureza == "Despesa": query += " AND tipo = 'Despesa'"
+    
+    # Adicionando ordenação padrão
+    query += " ORDER BY id DESC"
     return db_query(query, tuple(params))
 
 def salvar_categoria(nome, tipo):
-    db_query("INSERT INTO categorias (nome, tipo) VALUES (?, ?)", (nome, tipo), is_select=False)
+    db_query("INSERT INTO categorias (nome, tipo) VALUES (%s, %s)", (nome, tipo), is_select=False)
 
 def acao_salvar_novo():
     nome = st.session_state.inc_nome
@@ -185,7 +199,7 @@ def modal_inclusao():
         st.button("Salvar", type="primary", use_container_width=True, key="inc_btn_salv", on_click=acao_salvar_novo)
 
 def alterar_categoria(id_cat, novo_nome, novo_tipo):
-    db_query("UPDATE categorias SET nome = ?, tipo = ? WHERE id = ?", (novo_nome, novo_tipo, id_cat), is_select=False)
+    db_query("UPDATE categorias SET nome = %s, tipo = %s WHERE id = %s", (novo_nome, novo_tipo, id_cat), is_select=False)
 
 @st.dialog(":material/folder: Editar categoria")
 def modal_alteracao(id_cat, nome_atual, tipo_atual):
@@ -194,7 +208,6 @@ def modal_alteracao(id_cat, nome_atual, tipo_atual):
     input_tipo = st.selectbox("Natureza:", ["Receita", "Despesa"], index=idx_tipo, key=f"alt_tipo_{id_cat}")
     st.write("")
     
-    # Placeholder que garante a mensagem alinhada em toda a largura do formulário
     msg_placeholder = st.empty()
     
     col_vazia, col_canc, col_salv = st.columns([4, 3, 3])
@@ -203,18 +216,18 @@ def modal_alteracao(id_cat, nome_atual, tipo_atual):
     with col_salv:
         if st.button("Salvar", type="primary", use_container_width=True, key=f"alt_btn_salv_{id_cat}"):
             if input_nome.strip():
-                alterar_categoria(id_cat, input_nome, input_tipo)
+                alterar_categoria(int(id_cat), input_nome, input_tipo)
                 msg_placeholder.success("Categoria atualizada com sucesso!")
                 time.sleep(1); st.rerun()
             else: 
                 msg_placeholder.error("O campo de nome é obrigatório.")
 
 def excluir_categoria(id_cat):
-    db_query("DELETE FROM categorias WHERE id = ?", (id_cat,), is_select=False)
+    db_query("DELETE FROM categorias WHERE id = %s", (id_cat,), is_select=False)
 
 @st.dialog(":material/folder: Excluir categoria")
 def modal_exclusao(id_cat, nome_atual):
-    df_vinculos = db_query("SELECT COUNT(id) as total FROM classificacoes WHERE id_categoria = ?", (id_cat,))
+    df_vinculos = db_query("SELECT COUNT(id) as total FROM classificacoes WHERE id_categoria = %s", (id_cat,))
     total_vinculos = int(df_vinculos.iloc[0]['total'])
 
     if total_vinculos > 0:
@@ -247,7 +260,6 @@ def modal_exclusao(id_cat, nome_atual):
         """
         st.markdown(html_confirmacao, unsafe_allow_html=True)
         
-        # Placeholder para centralização total
         msg_placeholder = st.empty()
         
         col_vazia, col_canc, col_conf = st.columns([2, 3, 3])
@@ -255,7 +267,7 @@ def modal_exclusao(id_cat, nome_atual):
             if st.button("Cancelar", type="secondary", use_container_width=True, key=f"exc_btn_canc_{id_cat}"): st.rerun()
         with col_conf:
             if st.button("Confirmar exclusão", type="primary", use_container_width=True, key=f"exc_btn_conf_{id_cat}"):
-                excluir_categoria(id_cat)
+                excluir_categoria(int(id_cat))
                 msg_placeholder.success("Categoria excluída com sucesso!")
                 time.sleep(1); st.rerun()
 
@@ -266,7 +278,6 @@ def modal_duplicacao(nome_atual, tipo_atual):
     input_tipo = st.selectbox("Natureza:", ["Receita", "Despesa"], index=idx_tipo, key=f"dup_tipo_{nome_atual}")
     st.write("")
     
-    # Placeholder para centralização total
     msg_placeholder = st.empty()
     
     col_vazia, col_canc, col_salv = st.columns([4, 3, 3])
@@ -356,24 +367,23 @@ def render_categorias():
 # MÓDULO: CLASSIFICAÇÕES
 # ==========================================
 def carregar_dados_classificacoes(pesquisa="", categoria_filtro="Todas as Categorias"):
-    conn = sqlite3.connect('app_financas.db')
     query = "SELECT cl.id, cl.nome, c.nome as cat_nome, cl.id_categoria FROM classificacoes cl JOIN categorias c ON cl.id_categoria = c.id WHERE 1=1"
     params = []
     if pesquisa:
-        query += " AND cl.nome LIKE ?"
+        query += " AND cl.nome ILIKE %s"
         params.append(f"%{pesquisa}%")
     if categoria_filtro != "Todas as Categorias":
-        query += " AND c.nome = ?"
+        query += " AND c.nome = %s"
         params.append(categoria_filtro)
-    df = pd.read_sql_query(query, conn, params=params)
-    conn.close()
-    return df
+    
+    query += " ORDER BY cl.id DESC"
+    return db_query(query, tuple(params))
 
 def acao_salvar_novo_classificacao():
     nome = st.session_state.inc_nome_class
     if nome.strip() and st.session_state.inc_cat_pai:
         id_cat = st.session_state.inc_cat_pai[0]
-        db_query("INSERT INTO classificacoes (nome, id_categoria) VALUES (?, ?)", (nome, id_cat), is_select=False)
+        db_query("INSERT INTO classificacoes (nome, id_categoria) VALUES (%s, %s)", (nome, int(id_cat)), is_select=False)
         st.session_state.inc_nome_class = ""
         st.session_state.msg_class = ("success", f"Classificação '{nome}' registada com sucesso!")
     else: st.session_state.msg_class = ("error", "O campo de nome é obrigatório.")
@@ -402,7 +412,6 @@ def modal_editar_classificacao(id_class, nome_atual, id_cat_atual):
     cat_pai = st.selectbox("Vincular à categoria pai:", options=cat_list, format_func=lambda x: x[1], index=idx_cat, key=f"ed_cat_cl_{id_class}")
     st.write("")
     
-    # Placeholder para centralização total e validação visual
     msg_placeholder = st.empty()
     
     c1, c2, c3 = st.columns([4, 3, 3])
@@ -411,7 +420,7 @@ def modal_editar_classificacao(id_class, nome_atual, id_cat_atual):
     with c3:
         if st.button("Salvar", type="primary", use_container_width=True, key=f"ed_salv_cl_{id_class}"):
             if nome.strip():
-                db_query("UPDATE classificacoes SET nome = ?, id_categoria = ? WHERE id = ?", (nome, cat_pai[0], id_class), is_select=False)
+                db_query("UPDATE classificacoes SET nome = %s, id_categoria = %s WHERE id = %s", (nome, int(cat_pai[0]), int(id_class)), is_select=False)
                 msg_placeholder.success("Classificação atualizada com sucesso!")
                 time.sleep(1); st.rerun()
             else:
@@ -429,7 +438,6 @@ def modal_excluir_classificacao(id_class, nome):
     """
     st.markdown(html_confirmacao, unsafe_allow_html=True)
     
-    # Placeholder para centralização total
     msg_placeholder = st.empty()
     
     col_vazia, col_canc, col_conf = st.columns([2, 3, 3])
@@ -437,7 +445,7 @@ def modal_excluir_classificacao(id_class, nome):
         if st.button("Cancelar", type="secondary", use_container_width=True, key=f"del_canc_cl_{id_class}"): st.rerun()
     with col_conf:
         if st.button("Confirmar exclusão", type="primary", use_container_width=True, key=f"del_conf_cl_{id_class}"):
-            db_query("DELETE FROM classificacoes WHERE id = ?", (id_class,), is_select=False)
+            db_query("DELETE FROM classificacoes WHERE id = %s", (int(id_class),), is_select=False)
             msg_placeholder.success("Classificação excluída com sucesso!")
             time.sleep(1); st.rerun()
 
@@ -449,7 +457,6 @@ def modal_duplicar_classificacao(nome_atual, id_cat_atual):
     cat_pai = st.selectbox("Vincular à categoria pai:", options=cat_list, format_func=lambda x: x[1], index=idx_cat, key=f"dup_cat_cl_{nome_atual}")
     st.write("")
     
-    # Placeholder para centralização total
     msg_placeholder = st.empty()
     
     c1, c2, c3 = st.columns([4, 3, 3])
@@ -458,7 +465,7 @@ def modal_duplicar_classificacao(nome_atual, id_cat_atual):
     with c3:
         if st.button("Salvar", type="primary", use_container_width=True, key=f"dup_salv_cl_{nome_atual}"):
             if nome.strip():
-                db_query("INSERT INTO classificacoes (nome, id_categoria) VALUES (?, ?)", (nome, cat_pai[0]), is_select=False)
+                db_query("INSERT INTO classificacoes (nome, id_categoria) VALUES (%s, %s)", (nome, int(cat_pai[0])), is_select=False)
                 msg_placeholder.success("Classificação duplicada com sucesso!")
                 time.sleep(1); st.rerun()
             else:
