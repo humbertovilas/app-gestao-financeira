@@ -1,246 +1,220 @@
 /* ==========================================
- * INÍCIO DO MÓDULO: IDENTIDADE VISUAL E VARIÁVEIS
- * ========================================== */
-:root {
-    --cor-primaria: #1a2a40;      
-    --cor-btn-inserir: #e76f51;   
-    --cor-btn-filtrar: #457b9d;   
-    --cor-btn-salvar-modal: #457b9d; 
-    --cor-btn-cancelar: #dddddd;     
-    --cor-badge-receita: #4a90e2; 
-}
-
-/* ==========================================
- * INÍCIO DO MÓDULO: LAYOUT PRINCIPAL (ALINHAMENTO TOPO)
- * Objetivo: Remover a margem branca gigante do topo da página
- * ========================================== */
-[data-testid="block-container"] {
-    padding-top: 1.5rem !important; 
-}
-
-/* ==========================================
- * INÍCIO DO MÓDULO: TIPOGRAFIA GERAL E FONTES
- * ========================================== */
-h1, h2, h3 { 
-    color: var(--cor-primaria) !important; 
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-}
-
-/* ==========================================
- * INÍCIO DO MÓDULO: TÍTULOS DE PÁGINA
- * Objetivo: Alinhar perfeitamente o título com os botões de topo
- * ========================================== */
-.titulo-pagina {
-    margin: 0 !important;
-    padding: 0 !important;
+   INVERSÃO NATIVA DA BARRA LATERAL (LOGOTIPO NO TOPO)
+   ========================================== */
+/* Transforma a barra lateral numa coluna flexível */
+[data-testid="stSidebarContent"] {
     display: flex !important;
-    align-items: center !important;
-    height: 38px !important; /* Altura exata dos botões para alinhamento horizontal */
-    font-size: 24px !important;
+    flex-direction: column !important;
 }
 
-.titulo-pagina .material-symbols-rounded {
-    margin-right: 10px !important;
-    font-size: 28px !important;
-}
-
-/* Blindagem da Cor e Negrito dos Rótulos de Campos */
-.stMarkdown p, 
-label[data-testid="stWidgetLabel"],
-label[data-testid="stWidgetLabel"] p,
-label[data-testid="stWidgetLabel"] span,
-label[data-testid="stWidgetLabel"] div,
-.stTextInput label p, 
-.stSelectbox label p {
-    color: var(--cor-primaria) !important;
-    font-weight: bold !important; 
-}
-
-/* Proteção para os textos dentro dos botões (REMOVIDO O NEGRITO) */
-.stButton > button p, .stButton > button div, .stButton > button span,
-[data-testid="stFormSubmitButton"] > button p, 
-[data-testid="stFormSubmitButton"] > button div {
-    color: inherit !important;
-    font-weight: normal !important; 
-}
-
-/* ==========================================
- * INÍCIO DO MÓDULO: PADRONIZAÇÃO BASE DE BOTÕES
- * ========================================== */
-.stButton > button,
-[data-testid="stFormSubmitButton"] > button {
-    border: none !important;
-    border-radius: 5px !important;
-    font-weight: normal !important; 
-    transition: all 0.2s ease-in-out !important;
-}
-
-.stButton > button:hover,
-[data-testid="stFormSubmitButton"] > button:hover {
-    filter: brightness(0.9);
-}
-
-/* Botões de Topo */
-.stButton > button[kind="primary"] { background-color: var(--cor-btn-inserir) !important; color: white !important; }
-.stButton > button[kind="secondary"] { background-color: var(--cor-btn-filtrar) !important; color: white !important; }
-
-/* Botões Modais */
-div[data-testid="stDialog"] button[kind="primary"],
-div[data-testid="stDialog"] button[kind="primaryFormSubmit"] { background-color: var(--cor-btn-salvar-modal) !important; color: white !important; }
-div[data-testid="stDialog"] button[kind="secondary"],
-div[data-testid="stDialog"] button[kind="secondaryFormSubmit"] { background-color: var(--cor-btn-cancelar) !important; color: var(--cor-primaria) !important; }
-
-/* ==========================================
- * INÍCIO DO MÓDULO: COMPONENTES DA GRELHA E BADGES
- * ========================================== */
-.cabecalho-grid {
-    background-color: var(--cor-primaria); 
-    color: #FFFFFF !important;             
-    font-weight: bold;
-    padding: 12px 15px;
-    border-radius: 8px 8px 0 0;
-    margin-bottom: 5px;
-    font-size: 14px;
-}
-
-.cabecalho-grid div { color: #FFFFFF !important; }
-
-.badge-receita { background-color: var(--cor-badge-receita); color: white; padding: 5px 15px; border-radius: 4px; font-size: 12px; font-weight: bold; display: inline-block; }
-.badge-despesa { background-color: var(--cor-btn-inserir); color: white; padding: 5px 15px; border-radius: 4px; font-size: 12px; font-weight: bold; display: inline-block; }
-.badge-neutro { background-color: #e9ecef; color: #495057; padding: 5px 15px; border-radius: 4px; font-size: 12px; font-weight: bold; display: inline-block; }
-
-/* ==========================================
- * INÍCIO DO MÓDULO: BOTÕES DE AÇÃO NA GRELHA (TRANSPARÊNCIA FORÇADA)
- * ========================================== */
-.btn-acao-grid .stButton > button,
-.btn-acao-grid .stButton > button[kind="secondary"] {
-    background-color: transparent !important;
-    border: 1px solid #dee2e6 !important;
-    height: 38px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    padding: 0 !important;
-    color: var(--cor-primaria) !important; 
-    box-shadow: none !important;
-}
-
-.btn-acao-grid .stButton > button:hover,
-.btn-acao-grid .stButton > button[kind="secondary"]:hover {
-    background-color: #f8f9fa !important;
-    border: 1px solid #adb5bd !important;
-}
-
-/* Garante que o ícone do botão de ação fique escuro */
-.btn-acao-grid .stButton > button div,
-.btn-acao-grid .stButton > button[kind="secondary"] div {
-    color: var(--cor-primaria) !important;
-}
-
-/* ==========================================
- * INÍCIO DO MÓDULO: MENU LATERAL (ALINHAMENTO À ESQUERDA)
- * ========================================== */
-[data-testid="stSidebar"] {
-    background-color: var(--cor-primaria) !important; 
-}
-
-/* Remove a margem gigante padrão do Streamlit para podermos subir o título */
+/* Força a caixa que contém o nosso logotipo a subir para a posição 1 */
 [data-testid="stSidebarUserContent"] {
-    padding-top: 0rem !important;
+    order: 1 !important;
+    padding-top: 0px !important;
+    padding-bottom: 0px !important;
 }
 
-/* O título "Gestão Financeira" sofre puxão negativo (-55px) para alinhar com o botão << */
-.sidebar-title {
-    display: flex;
-    align-items: center;
-    justify-content: flex-start;
-    font-size: 20px;
-    font-weight: bold !important;
-    color: #FFFFFF !important; 
-    padding: 0px 24px 20px 24px !important; 
-    margin-top: -55px !important; 
-    margin-bottom: 10px;
+/* Força o menu de navegação do Streamlit a descer para a posição 2 */
+[data-testid="stSidebarNav"] {
+    order: 2 !important;
+    padding-top: 10px !important;
 }
 
-/* Forçar alinhamento nos botões do menu */
-[data-testid="stSidebar"] .stButton > button,
-[data-testid="stSidebar"] .stButton > button[kind="secondary"] {
-    background-color: transparent !important;
-    color: #FFFFFF !important; 
-    border: none !important;
-    box-shadow: none !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: flex-start !important; 
-    gap: 12px !important; 
-    padding: 12px 24px !important; 
-    width: 100% !important;
-    font-size: 16px !important;
-    font-weight: normal !important; 
-    border-radius: 0 !important; 
-}
 
-/* Textos do menu à esquerda */
-[data-testid="stSidebar"] .stButton > button div[data-testid="stMarkdownContainer"] p,
-[data-testid="stSidebar"] .stButton > button div,
-[data-testid="stSidebar"] .stButton > button[kind="secondary"] div[data-testid="stMarkdownContainer"] p,
-[data-testid="stSidebar"] .stButton > button[kind="secondary"] div {
-    text-align: left !important;
-    justify-content: flex-start !important;
-    margin: 0 !important;
-    width: auto !important;
-    flex-grow: 0 !important;
-}
+/* ==========================================
+   VARIÁVEIS DE CORES E FONTES
+   ========================================== */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-[data-testid="stSidebar"] .stButton > button:hover,
-[data-testid="stSidebar"] .stButton > button[kind="secondary"]:hover {
-    background-color: rgba(255, 255, 255, 0.1) !important; 
-}
-
-[data-testid="stSidebar"] .stButton > button[kind="primary"] {
-    background-color: rgba(255, 255, 255, 0.15) !important; 
-    border-left: 5px solid #20c997 !important; 
-    padding-left: 19px !important; 
-    justify-content: flex-start !important;
+:root {
+    --cor-fundo: #f4f7f6;
+    --cor-primaria: #1a2a40;
+    --cor-destaque: #20c997;
+    --cor-destaque-hover: #17a589;
+    --cor-perigo: #e76f51;
+    --cor-perigo-hover: #d9534f;
+    --cor-borda: #e9ecef;
+    --cor-texto: #495057;
 }
 
 /* ==========================================
- * INÍCIO DO MÓDULO: BOTÃO RECOLHER MENU (<<) MAIOR E BRANCO PURO
- * ========================================== */
+   ESTRUTURA GLOBAL E FONTE
+   ========================================== */
+html, body, [class*="css"]  {
+    font-family: 'Inter', sans-serif;
+    color: var(--cor-texto);
+}
+
+.stApp {
+    background-color: var(--cor-fundo);
+}
+
+/* ==========================================
+   MENU LATERAL NATIVO (CORES E ESTÉTICA)
+   ========================================== */
+[data-testid="stSidebar"], 
+[data-testid="stSidebar"] > div:first-child {
+    background-color: var(--cor-primaria) !important;
+    border-right: none !important;
+}
+
+/* Cor do texto dos menus e títulos */
+[data-testid="stSidebarNav"] span {
+    color: #e9ecef !important;
+    font-weight: 500;
+    font-size: 15px;
+}
+
+/* Separadores do Menu (Ex: Cadastros Básicos) */
+[data-testid="stSidebarNavSeparator"] {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* Botão ativo no menu lateral */
+[data-testid="stSidebarNav"] [data-testid="stSidebarNavLink"][aria-current="page"] {
+    background-color: var(--cor-destaque) !important;
+    border-radius: 6px !important;
+    margin: 0 10px !important;
+}
+
+[data-testid="stSidebarNav"] [data-testid="stSidebarNavLink"][aria-current="page"] span {
+    color: white !important;
+    font-weight: 700 !important;
+}
+
+/* Efeito Hover nos menus inativos */
+[data-testid="stSidebarNav"] [data-testid="stSidebarNavLink"]:hover {
+    background-color: rgba(32, 201, 151, 0.2) !important;
+    border-radius: 6px !important;
+    margin: 0 10px !important;
+    transition: 0.3s !important;
+}
+
+/* ==========================================
+   BOTÃO DE RECOLHER MENU (COLLAPSE <)
+   ========================================== */
 [data-testid="stSidebarCollapseButton"] {
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    border-radius: 6px !important;
     background-color: transparent !important;
-    border: none !important;
     box-shadow: none !important;
-    padding: 8px !important; /* Aumenta a área de clique */
+    transition: 0.3s !important;
 }
 
-/* Aumenta o tamanho visual do ícone (SVG) em 60% */
 [data-testid="stSidebarCollapseButton"] svg {
-    transform: scale(1.6) !important; 
-}
-
-/* Atinge TODOS os elementos filhos forçando branco */
-[data-testid="stSidebarCollapseButton"],
-[data-testid="stSidebarCollapseButton"] * {
-    color: #FFFFFF !important;
-    fill: #FFFFFF !important;
+    color: white !important;
+    fill: white !important;
 }
 
 [data-testid="stSidebarCollapseButton"]:hover {
-    background-color: rgba(255, 255, 255, 0.1) !important;
-    border-radius: 50% !important; 
+    background-color: rgba(32, 201, 151, 0.2) !important;
+    border-color: #20c997 !important;
 }
 
-/* Ícones Nativos */
-div[data-testid="stDialog"] h2 { display: flex !important; align-items: center !important; gap: 12px !important; }
-div[data-testid="stDialog"] h2 div, div[data-testid="stDialog"] h2 span { font-weight: normal !important; }
+[data-testid="stSidebarCollapseButton"]:hover svg {
+    color: #20c997 !important;
+    fill: #20c997 !important;
+}
 
 /* ==========================================
- * INÍCIO DO MÓDULO: ALERTAS (CENTRALIZAÇÃO DE TEXTO)
- * Objetivo: Forçar simetria nos avisos de sucesso e erro
- * ========================================== */
-[data-testid="stAlert"] div[data-testid="stMarkdownContainer"] p {
-    text-align: center !important;
-    width: 100% !important;
-    margin: 0 !important;
+   TÍTULOS, BOTÕES E GRELHAS (INTACTOS)
+   ========================================== */
+.titulo-pagina {
+    color: var(--cor-primaria);
+    font-weight: 700;
+    font-size: 26px;
+    margin-bottom: 5px;
+    padding-bottom: 0px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.stButton > button {
+    border-radius: 6px;
+    font-weight: 600;
+    padding: 0.5rem 1rem;
+    transition: all 0.2s ease-in-out;
+    border: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.stButton > button[kind="primary"] {
+    background-color: var(--cor-destaque);
+    color: white;
+}
+
+.stButton > button[kind="primary"]:hover {
+    background-color: var(--cor-destaque-hover);
+    box-shadow: 0 4px 8px rgba(32, 201, 151, 0.3);
+}
+
+.stButton > button[kind="secondary"] {
+    background-color: #f8f9fa;
+    color: var(--cor-primaria);
+    border: 1px solid var(--cor-borda);
+}
+
+.stButton > button[kind="secondary"]:hover {
+    background-color: #e9ecef;
+    color: var(--cor-primaria);
+}
+
+.stTextInput > div > div > input, 
+.stSelectbox > div > div > div {
+    border-radius: 6px;
+    border: 1px solid var(--cor-borda);
+    padding: 0.6rem;
+    transition: border-color 0.2s;
+}
+
+.stTextInput > div > div > input:focus, 
+.stSelectbox > div > div > div:focus {
+    border-color: var(--cor-destaque);
+    box-shadow: 0 0 0 2px rgba(32, 201, 151, 0.2);
+}
+
+.cabecalho-grid {
+    background-color: var(--cor-primaria);
+    color: white;
+    padding: 12px 15px;
+    border-radius: 8px 8px 0 0;
+    font-weight: 600;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+}
+
+.badge-receita {
+    background-color: rgba(32, 201, 151, 0.15);
+    color: #0f8661;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 700;
+    display: inline-block;
+    border: 1px solid rgba(32, 201, 151, 0.3);
+}
+
+.badge-despesa {
+    background-color: rgba(231, 111, 81, 0.15);
+    color: #b3391b;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 700;
+    display: inline-block;
+    border: 1px solid rgba(231, 111, 81, 0.3);
+}
+
+.badge-neutro {
+    background-color: #e9ecef;
+    color: #495057;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 700;
+    display: inline-block;
+    border: 1px solid #ced4da;
 }
