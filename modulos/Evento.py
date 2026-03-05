@@ -1,11 +1,11 @@
 import streamlit as st
-import time
 from infraestrutura.ProcessoCrud import GerenciadorBanco, UtilitariosVisuais
 
 UtilitariosVisuais.aplicar_configuracoes_ui()
+UtilitariosVisuais.inicializar_estados_modal()
 
 # ==========================================
-# REGRAS DE NEGÓCIO E CRUD
+# REGRAS DE NEGÓCIO E CONSULTA
 # ==========================================
 def carregar_dados(pesquisa="", classificacao_filtro="Todas as Classificações"):
     query = "SELECT e.id, e.nome, c.nome as class_nome, e.id_classificacao FROM eventos e JOIN classificacoes c ON e.id_classificacao = c.id WHERE 1=1"
@@ -19,98 +19,132 @@ def carregar_dados(pesquisa="", classificacao_filtro="Todas as Classificações"
     query += " ORDER BY e.id DESC"
     return GerenciadorBanco.executar_query(query, tuple(params))
 
+# ==========================================
+# CALLBACKS (AÇÕES DE GRAVAÇÃO)
+# ==========================================
+def callback_inclusao():
+    nome = st.session_state.get(f"inc_nome_ev_{st.session_state.form_reset}", "")
+    class_pai = st.session_state.get(f"inc_class_ev_{st.session_state.form_reset}")
+    if nome.strip() and class_pai:
+        GerenciadorBanco.executar_query("INSERT INTO eventos (nome, id_classificacao) VALUES (%s, %s)", (nome, int(class_pai[0])), is_select=False)
+        st.session_state.msg_sucesso = True
+        st.session_state.form_cleared = True
+        st.session_state.form_reset += 1
+    else:
+        st.session_state.msg_erro = "O campo de nome é obrigatório."
+
+def callback_alteracao(id_evento):
+    nome = st.session_state.get(f"alt_nome_ev_{st.session_state.form_reset}", "")
+    class_pai = st.session_state.get(f"alt_class_ev_{st.session_state.form_reset}")
+    if nome.strip() and class_pai:
+        GerenciadorBanco.executar_query("UPDATE eventos SET nome = %s, id_classificacao = %s WHERE id = %s", (nome, int(class_pai[0]), int(id_evento)), is_select=False)
+        st.session_state.msg_sucesso = True
+        st.session_state.form_cleared = True
+        st.session_state.form_reset += 1
+    else:
+        st.session_state.msg_erro = "O campo de nome é obrigatório."
+
+def callback_exclusao(id_evento):
+    GerenciadorBanco.executar_query("DELETE FROM eventos WHERE id = %s", (int(id_evento),), is_select=False)
+    st.session_state.msg_sucesso = True
+    st.session_state.form_cleared = True
+    st.session_state.form_reset += 1
+
+def callback_duplicacao():
+    nome = st.session_state.get(f"dup_nome_ev_{st.session_state.form_reset}", "")
+    class_pai = st.session_state.get(f"dup_class_ev_{st.session_state.form_reset}")
+    if nome.strip() and class_pai:
+        GerenciadorBanco.executar_query("INSERT INTO eventos (nome, id_classificacao) VALUES (%s, %s)", (nome, int(class_pai[0])), is_select=False)
+        st.session_state.msg_sucesso = True
+        st.session_state.form_cleared = True
+        st.session_state.form_reset += 1
+    else:
+        st.session_state.msg_erro = "O campo de nome é obrigatório."
+
+# ==========================================
+# MODAIS PADRONIZADAS
+# ==========================================
 @st.dialog(":material/sell: Novo evento")
 def modal_inclusao():
+    UtilitariosVisuais.exibir_mensagens()
     classes = GerenciadorBanco.executar_query("SELECT id, nome FROM classificacoes ORDER BY nome")
-    if classes.empty: st.warning("Cadastre uma classificação primeiro."); return
     
-    nome = st.text_input("Nome do evento (Credor/Devedor):", placeholder="Ex: Supermercado, Salário...")
-    class_pai = st.selectbox("Vincular à classificação (Grupo Macro):", options=classes.values.tolist(), format_func=lambda x: x[1])
-    st.write("")
+    if classes.empty: 
+        st.warning("Cadastre uma classificação primeiro.")
+        if st.button("Fechar", use_container_width=True): st.rerun()
+        return
+        
+    val_nome = "" if st.session_state.form_cleared else ""
+    idx_class = 0 if st.session_state.form_cleared else 0
     
-    msg_placeholder = st.empty()
+    st.text_input("Nome do evento (Credor/Devedor):", value=val_nome, placeholder="Ex: Supermercado, Salário...", key=f"inc_nome_ev_{st.session_state.form_reset}")
+    st.selectbox("Vincular à classificação (Grupo Macro):", options=classes.values.tolist(), format_func=lambda x: x[1], index=idx_class, key=f"inc_class_ev_{st.session_state.form_reset}")
+    
     c1, c2, c3 = st.columns([4, 3, 3])
     with c2: 
-        if st.button("Cancelar", type="secondary", use_container_width=True): st.rerun()
+        if st.button("Fechar", type="secondary", use_container_width=True): st.rerun()
     with c3: 
-        if st.button("Salvar", type="primary", use_container_width=True):
-            if nome.strip() and class_pai:
-                with st.spinner("Processando..."):
-                    GerenciadorBanco.executar_query("INSERT INTO eventos (nome, id_classificacao) VALUES (%s, %s)", (nome, int(class_pai[0])), is_select=False)
-                    time.sleep(0.4)
-                msg_placeholder.success(f"Evento '{nome}' registado com sucesso!")
-                time.sleep(1); st.rerun()
-            else: 
-                msg_placeholder.error("O campo de nome é obrigatório.")
+        st.button("Salvar", type="primary", use_container_width=True, on_click=callback_inclusao)
 
 @st.dialog(":material/sell: Editar evento")
 def modal_alteracao(id_evento, nome_atual, id_class_atual):
-    nome = st.text_input("Nome do evento (Credor/Devedor):", value=nome_atual)
+    UtilitariosVisuais.exibir_mensagens()
     classes = GerenciadorBanco.executar_query("SELECT id, nome FROM classificacoes ORDER BY nome")
-    class_list = classes.values.tolist(); idx_class = next((i for i, c in enumerate(class_list) if c[0] == id_class_atual), 0)
-    class_pai = st.selectbox("Vincular à classificação (Grupo Macro):", options=class_list, format_func=lambda x: x[1], index=idx_class)
-    st.write("")
+    class_list = classes.values.tolist()
     
-    msg_placeholder = st.empty()
+    val_nome = "" if st.session_state.form_cleared else nome_atual
+    idx_class = 0 if st.session_state.form_cleared else next((i for i, c in enumerate(class_list) if c[0] == id_class_atual), 0)
+    
+    st.text_input("Nome do evento (Credor/Devedor):", value=val_nome, key=f"alt_nome_ev_{st.session_state.form_reset}")
+    st.selectbox("Vincular à classificação (Grupo Macro):", options=class_list, format_func=lambda x: x[1], index=idx_class, key=f"alt_class_ev_{st.session_state.form_reset}")
+    
     c1, c2, c3 = st.columns([4, 3, 3])
     with c2:
-        if st.button("Cancelar", type="secondary", use_container_width=True): st.rerun()
+        if st.button("Fechar", type="secondary", use_container_width=True): st.rerun()
     with c3:
-        if st.button("Salvar", type="primary", use_container_width=True):
-            if nome.strip():
-                with st.spinner("Processando..."):
-                    GerenciadorBanco.executar_query("UPDATE eventos SET nome = %s, id_classificacao = %s WHERE id = %s", (nome, int(class_pai[0]), int(id_evento)), is_select=False)
-                    time.sleep(0.4)
-                msg_placeholder.success("Evento atualizado com sucesso!")
-                time.sleep(1); st.rerun()
-            else: 
-                msg_placeholder.error("O campo de nome é obrigatório.")
+        st.button("Salvar", type="primary", use_container_width=True, on_click=callback_alteracao, args=(id_evento,))
 
 @st.dialog(":material/sell: Excluir evento")
 def modal_exclusao(id_evento, nome_atual):
-    html_confirmacao = f"""
-    <div style="border-left: 5px solid #457b9d; background-color: #f8f9fa; padding: 20px; border-radius: 4px; margin-bottom: 20px; border: 1px solid #e9ecef;">
-        <div style="color: #1a2a40; font-size: 17px; line-height: 1.6;">
-            Tem a certeza que deseja excluir o evento <b>{nome_atual}</b>?<br>
-            <span style="color: #e76f51;"><i>Esta ação removerá o registo permanentemente.</i></span>
+    UtilitariosVisuais.exibir_mensagens()
+    
+    if not st.session_state.form_cleared:
+        html_confirmacao = f"""
+        <div style="border-left: 5px solid #457b9d; background-color: #f8f9fa; padding: 20px; border-radius: 4px; margin-bottom: 20px; border: 1px solid #e9ecef;">
+            <div style="color: #1a2a40; font-size: 17px; line-height: 1.6;">
+                Tem a certeza que deseja excluir o evento <b>{nome_atual}</b>?<br>
+                <span style="color: #e76f51;"><i>Esta ação removerá o registo permanentemente.</i></span>
+            </div>
         </div>
-    </div>
-    """
-    st.markdown(html_confirmacao, unsafe_allow_html=True)
-    msg_placeholder = st.empty()
-    c1, c2, c3 = st.columns([2, 3, 3])
-    with c2:
-        if st.button("Cancelar", type="secondary", use_container_width=True): st.rerun()
-    with c3:
-        if st.button("Confirmar exclusão", type="primary", use_container_width=True):
-            with st.spinner("Processando..."):
-                GerenciadorBanco.executar_query("DELETE FROM eventos WHERE id = %s", (int(id_evento),), is_select=False)
-                time.sleep(0.4)
-            msg_placeholder.success("Evento excluído com sucesso!")
-            time.sleep(1); st.rerun()
+        """
+        st.markdown(html_confirmacao, unsafe_allow_html=True)
+        c1, c2, c3 = st.columns([2, 3, 3])
+        with c2:
+            if st.button("Fechar", type="secondary", use_container_width=True): st.rerun()
+        with c3:
+            st.button("Confirmar", type="primary", use_container_width=True, on_click=callback_exclusao, args=(id_evento,))
+    else:
+        c1, c2 = st.columns([7, 3])
+        with c2:
+            if st.button("Fechar", type="secondary", use_container_width=True): st.rerun()
 
 @st.dialog(":material/sell: Duplicar evento")
 def modal_duplicacao(nome_atual, id_class_atual):
-    nome = st.text_input("Novo nome (cópia):", value=f"{nome_atual} (Cópia)")
+    UtilitariosVisuais.exibir_mensagens()
     classes = GerenciadorBanco.executar_query("SELECT id, nome FROM classificacoes ORDER BY nome")
-    class_list = classes.values.tolist(); idx_class = next((i for i, c in enumerate(class_list) if c[0] == id_class_atual), 0)
-    class_pai = st.selectbox("Vincular à classificação (Grupo Macro):", options=class_list, format_func=lambda x: x[1], index=idx_class)
-    st.write("")
+    class_list = classes.values.tolist()
     
-    msg_placeholder = st.empty()
+    val_nome = "" if st.session_state.form_cleared else f"{nome_atual} (Cópia)"
+    idx_class = 0 if st.session_state.form_cleared else next((i for i, c in enumerate(class_list) if c[0] == id_class_atual), 0)
+    
+    st.text_input("Novo nome (cópia):", value=val_nome, key=f"dup_nome_ev_{st.session_state.form_reset}")
+    st.selectbox("Vincular à classificação (Grupo Macro):", options=class_list, format_func=lambda x: x[1], index=idx_class, key=f"dup_class_ev_{st.session_state.form_reset}")
+    
     c1, c2, c3 = st.columns([4, 3, 3])
     with c2:
-        if st.button("Cancelar", type="secondary", use_container_width=True): st.rerun()
+        if st.button("Fechar", type="secondary", use_container_width=True): st.rerun()
     with c3:
-        if st.button("Salvar", type="primary", use_container_width=True):
-            if nome.strip():
-                with st.spinner("Processando..."):
-                    GerenciadorBanco.executar_query("INSERT INTO eventos (nome, id_classificacao) VALUES (%s, %s)", (nome, int(class_pai[0])), is_select=False)
-                    time.sleep(0.4)
-                msg_placeholder.success("Evento duplicado com sucesso!")
-                time.sleep(1); st.rerun()
-            else: 
-                msg_placeholder.error("O campo de nome é obrigatório.")
+        st.button("Salvar", type="primary", use_container_width=True, on_click=callback_duplicacao)
 
 # ==========================================
 # CONSTRUÇÃO DA TELA (VIEW)
@@ -122,10 +156,12 @@ if 'show_f_ev' not in st.session_state: st.session_state.show_f_ev = False
 c_titulo, c_filtrar, c_inserir, c_margem = st.columns([5, 1.5, 1.5, 3])
 with c_titulo: st.markdown("<h3 class='titulo-pagina'><span class='material-symbols-rounded'>sell</span> Cadastro de Eventos</h3>", unsafe_allow_html=True)
 with c_filtrar:
-    if st.button("Filtrar", icon=":material/search:", use_container_width=True):
+    if st.button("Filtrar", type="tertiary", icon=":material/search:", use_container_width=True):
         st.session_state.show_f_ev = not st.session_state.show_f_ev; st.rerun()
 with c_inserir:
-    if st.button("Inserir", type="primary", icon=":material/add:", use_container_width=True): modal_inclusao()
+    if st.button("Inserir", type="primary", icon=":material/add:", use_container_width=True): 
+        UtilitariosVisuais.preparar_modal()
+        modal_inclusao()
 
 if st.session_state.show_f_ev:
     with st.container(border=True):
@@ -136,7 +172,7 @@ if st.session_state.show_f_ev:
         idx_f = lista_filtro.index(st.session_state.f_ev_class) if st.session_state.f_ev_class in lista_filtro else 0
         v_c = cc.selectbox("Classificação Vinculada:", options=lista_filtro, index=idx_f)
         cb.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
-        if cb.button("Pesquisar", icon=":material/search:", use_container_width=True):
+        if cb.button("Pesquisar", type="tertiary", icon=":material/search:", use_container_width=True):
             st.session_state.f_ev_pesq, st.session_state.f_ev_class = v_p, v_c; st.rerun()
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -152,8 +188,11 @@ else:
             c1, c2, c3, c4, c5 = st.columns([5, 2, 0.66, 0.66, 0.68], vertical_alignment="center")
             c1.markdown(f"<span style='font-weight: 600; color: #1a2a40; font-size: 15px; padding-left: 10px;'>{row['nome']}</span>", unsafe_allow_html=True)
             c2.markdown(f"<div style='text-align: center;'><span class='badge-neutro'>{row['class_nome']}</span></div>", unsafe_allow_html=True)
-            if c3.button(" ", icon=":material/edit:", key=f"ed_ev_{row['id']}", help="Editar", use_container_width=True): modal_alteracao(row['id'], row['nome'], row['id_classificacao'])
-            if c4.button(" ", icon=":material/content_copy:", key=f"cp_ev_{row['id']}", help="Duplicar", use_container_width=True): modal_duplicacao(row['nome'], row['id_classificacao'])
-            if c5.button(" ", icon=":material/delete:", key=f"del_ev_{row['id']}", help="Excluir", use_container_width=True): modal_exclusao(row['id'], row['nome'])
+            if c3.button(" ", icon=":material/edit:", key=f"ed_ev_{row['id']}", help="Editar", use_container_width=True): 
+                UtilitariosVisuais.preparar_modal(); modal_alteracao(row['id'], row['nome'], row['id_classificacao'])
+            if c4.button(" ", icon=":material/content_copy:", key=f"cp_ev_{row['id']}", help="Duplicar", use_container_width=True): 
+                UtilitariosVisuais.preparar_modal(); modal_duplicacao(row['nome'], row['id_classificacao'])
+            if c5.button(" ", icon=":material/delete:", key=f"del_ev_{row['id']}", help="Excluir", use_container_width=True): 
+                UtilitariosVisuais.preparar_modal(); modal_exclusao(row['id'], row['nome'])
             st.markdown("<hr style='margin: 8px 0; border: 0; border-top: 1px solid #e9ecef;'>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)

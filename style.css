@@ -117,7 +117,7 @@ html, body, [class*="css"]  {
 }
 
 /* ==========================================
-   TÍTULOS, BOTÕES E GRELHAS (INTACTOS)
+   TÍTULOS E CABEÇALHOS
    ========================================== */
 .titulo-pagina {
     color: var(--cor-primaria);
@@ -130,6 +130,9 @@ html, body, [class*="css"]  {
     gap: 10px;
 }
 
+/* ==========================================
+   BOTÕES
+   ========================================== */
 .stButton > button {
     border-radius: 6px;
     font-weight: 600;
@@ -139,6 +142,7 @@ html, body, [class*="css"]  {
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
+/* Botão Primário (Inserir, Salvar, Confirmar) */
 .stButton > button[kind="primary"] {
     background-color: var(--cor-destaque);
     color: white;
@@ -149,6 +153,7 @@ html, body, [class*="css"]  {
     box-shadow: 0 4px 8px rgba(32, 201, 151, 0.3);
 }
 
+/* Botão Secundário (Fechar, Ícones da Grid) */
 .stButton > button[kind="secondary"] {
     background-color: #f8f9fa;
     color: var(--cor-primaria);
@@ -160,6 +165,27 @@ html, body, [class*="css"]  {
     color: var(--cor-primaria);
 }
 
+/* Botão Terciário (Filtros e Pesquisas) */
+.stButton > button[kind="tertiary"] {
+    background-color: var(--cor-primaria) !important;
+    color: white !important;
+    border: none !important;
+}
+
+.stButton > button[kind="tertiary"] p,
+.stButton > button[kind="tertiary"] span {
+    color: white !important;
+}
+
+.stButton > button[kind="tertiary"]:hover {
+    background-color: #2c3e50 !important;
+    color: white !important;
+    box-shadow: 0 4px 8px rgba(26, 42, 64, 0.3) !important;
+}
+
+/* ==========================================
+   INPUTS E SELECTS
+   ========================================== */
 .stTextInput > div > div > input, 
 .stSelectbox > div > div > div {
     border-radius: 6px;
@@ -174,6 +200,9 @@ html, body, [class*="css"]  {
     box-shadow: 0 0 0 2px rgba(32, 201, 151, 0.2);
 }
 
+/* ==========================================
+   GRELHA DE DADOS (CABEÇALHO)
+   ========================================== */
 .cabecalho-grid {
     background-color: var(--cor-primaria);
     color: white;
@@ -186,6 +215,9 @@ html, body, [class*="css"]  {
     margin-bottom: 10px;
 }
 
+/* ==========================================
+   BADGES (NATUREZA DA CATEGORIA E GRUPOS)
+   ========================================== */
 .badge-receita {
     background-color: rgba(32, 201, 151, 0.15);
     color: #0f8661;
