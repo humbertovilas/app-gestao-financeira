@@ -1,25 +1,24 @@
 /* ==========================================
    INVERSÃO NATIVA DA BARRA LATERAL (LOGOTIPO NO TOPO)
    ========================================== */
-/* Transforma a barra lateral numa coluna flexível */
 [data-testid="stSidebarContent"] {
     display: flex !important;
     flex-direction: column !important;
+    position: relative !important; /* Âncora mestra para o botão descer */
+    min-height: 100vh !important; /* Garante que a barra vá até o chão */
 }
 
-/* Força a caixa que contém o nosso logotipo a subir para a posição 1 */
 [data-testid="stSidebarUserContent"] {
     order: 1 !important;
     padding-top: 0px !important;
     padding-bottom: 0px !important;
 }
 
-/* Força o menu de navegação do Streamlit a descer para a posição 2 */
 [data-testid="stSidebarNav"] {
     order: 2 !important;
     padding-top: 10px !important;
+    padding-bottom: 90px !important; /* Cria um "colchão" de espaço para o menu não invadir o botão no rodapé */
 }
-
 
 /* ==========================================
    VARIÁVEIS DE CORES E FONTES
@@ -58,19 +57,16 @@ html, body, [class*="css"]  {
     border-right: none !important;
 }
 
-/* Cor do texto dos menus e títulos */
 [data-testid="stSidebarNav"] span {
     color: #e9ecef !important;
     font-weight: 500;
     font-size: 15px;
 }
 
-/* Separadores do Menu (Ex: Cadastros Básicos) */
 [data-testid="stSidebarNavSeparator"] {
     background-color: rgba(255, 255, 255, 0.1) !important;
 }
 
-/* Botão ativo no menu lateral */
 [data-testid="stSidebarNav"] [data-testid="stSidebarNavLink"][aria-current="page"] {
     background-color: var(--cor-destaque) !important;
     border-radius: 6px !important;
@@ -82,12 +78,54 @@ html, body, [class*="css"]  {
     font-weight: 700 !important;
 }
 
-/* Efeito Hover nos menus inativos */
 [data-testid="stSidebarNav"] [data-testid="stSidebarNavLink"]:hover {
     background-color: rgba(32, 201, 151, 0.2) !important;
     border-radius: 6px !important;
     margin: 0 10px !important;
     transition: 0.3s !important;
+}
+
+/* ==========================================
+   BOTÃO DE SAIR DA SESSÃO (RODAPÉ ABSOLUTO CIRÚRGICO)
+   ========================================== */
+/* 1. Destruição das 'gaiolas' invisíveis do Streamlit */
+[data-testid="stSidebarUserContent"], 
+[data-testid="stSidebarUserContent"] > div,
+[data-testid="stSidebarUserContent"] .element-container {
+    position: static !important;
+    transform: none !important;
+}
+
+/* 2. O botão Sair livre e ancorado no fundo da barra */
+[data-testid="stSidebar"] div.stButton {
+    position: absolute !important;
+    bottom: 25px !important;
+    left: 15px !important;
+    right: 15px !important; /* Responsividade automática da largura */
+    width: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    z-index: 999 !important;
+}
+
+/* 3. Estética do botão: Fantasma, alinhado à esquerda e sem bordas pesadas */
+[data-testid="stSidebar"] div.stButton > button {
+    background-color: transparent !important;
+    border: 1px solid transparent !important;
+    color: #e9ecef !important; /* Cor igual aos itens do menu inativos */
+    box-shadow: none !important;
+    font-weight: 500;
+    display: flex;
+    justify-content: flex-start;
+    padding-left: 15px;
+    transition: all 0.2s ease-in-out;
+    width: 100% !important;
+}
+
+/* 4. O hover agora usa o verde de destaque do sistema */
+[data-testid="stSidebar"] div.stButton > button:hover {
+    color: var(--cor-destaque) !important;
+    background-color: rgba(32, 201, 151, 0.05) !important;
 }
 
 /* ==========================================
@@ -131,7 +169,7 @@ html, body, [class*="css"]  {
 }
 
 /* ==========================================
-   BOTÕES
+   BOTÕES GERAIS DO SISTEMA
    ========================================== */
 .stButton > button {
     border-radius: 6px;
@@ -142,7 +180,6 @@ html, body, [class*="css"]  {
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
-/* Botão Primário (Inserir, Salvar, Confirmar) */
 .stButton > button[kind="primary"] {
     background-color: var(--cor-destaque);
     color: white;
@@ -153,7 +190,6 @@ html, body, [class*="css"]  {
     box-shadow: 0 4px 8px rgba(32, 201, 151, 0.3);
 }
 
-/* Botão Secundário (Fechar, Ícones da Grid) */
 .stButton > button[kind="secondary"] {
     background-color: #f8f9fa;
     color: var(--cor-primaria);
@@ -165,7 +201,6 @@ html, body, [class*="css"]  {
     color: var(--cor-primaria);
 }
 
-/* Botão Terciário (Filtros e Pesquisas) */
 .stButton > button[kind="tertiary"] {
     background-color: var(--cor-primaria) !important;
     color: white !important;
