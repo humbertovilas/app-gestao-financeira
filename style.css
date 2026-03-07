@@ -4,8 +4,8 @@
 [data-testid="stSidebarContent"] {
     display: flex !important;
     flex-direction: column !important;
-    position: relative !important; /* Âncora mestra para o botão descer */
-    min-height: 100vh !important; /* Garante que a barra vá até o chão */
+    position: relative !important;
+    min-height: 100vh !important;
 }
 
 [data-testid="stSidebarUserContent"] {
@@ -17,7 +17,7 @@
 [data-testid="stSidebarNav"] {
     order: 2 !important;
     padding-top: 10px !important;
-    padding-bottom: 90px !important; /* Cria um "colchão" de espaço para o menu não invadir o botão no rodapé */
+    padding-bottom: 90px !important;
 }
 
 /* ==========================================
@@ -88,7 +88,6 @@ html, body, [class*="css"]  {
 /* ==========================================
    BOTÃO DE SAIR DA SESSÃO (RODAPÉ ABSOLUTO CIRÚRGICO)
    ========================================== */
-/* 1. Destruição das 'gaiolas' invisíveis do Streamlit */
 [data-testid="stSidebarUserContent"], 
 [data-testid="stSidebarUserContent"] > div,
 [data-testid="stSidebarUserContent"] .element-container {
@@ -96,23 +95,21 @@ html, body, [class*="css"]  {
     transform: none !important;
 }
 
-/* 2. O botão Sair livre e ancorado no fundo da barra */
 [data-testid="stSidebar"] div.stButton {
     position: absolute !important;
     bottom: 25px !important;
     left: 15px !important;
-    right: 15px !important; /* Responsividade automática da largura */
+    right: 15px !important;
     width: auto !important;
     margin: 0 !important;
     padding: 0 !important;
     z-index: 999 !important;
 }
 
-/* 3. Estética do botão: Fantasma, alinhado à esquerda e sem bordas pesadas */
 [data-testid="stSidebar"] div.stButton > button {
     background-color: transparent !important;
     border: 1px solid transparent !important;
-    color: #e9ecef !important; /* Cor igual aos itens do menu inativos */
+    color: #e9ecef !important;
     box-shadow: none !important;
     font-weight: 500;
     display: flex;
@@ -122,7 +119,6 @@ html, body, [class*="css"]  {
     width: 100% !important;
 }
 
-/* 4. O hover agora usa o verde de destaque do sistema */
 [data-testid="stSidebar"] div.stButton > button:hover {
     color: var(--cor-destaque) !important;
     background-color: rgba(32, 201, 151, 0.05) !important;
@@ -222,7 +218,9 @@ html, body, [class*="css"]  {
    INPUTS E SELECTS
    ========================================== */
 .stTextInput > div > div > input, 
-.stSelectbox > div > div > div {
+.stSelectbox > div > div > div,
+.stNumberInput > div > div > input,
+.stDateInput > div > div > input {
     border-radius: 6px;
     border: 1px solid var(--cor-borda);
     padding: 0.6rem;
@@ -230,7 +228,9 @@ html, body, [class*="css"]  {
 }
 
 .stTextInput > div > div > input:focus, 
-.stSelectbox > div > div > div:focus {
+.stSelectbox > div > div > div:focus,
+.stNumberInput > div > div > input:focus,
+.stDateInput > div > div > input:focus {
     border-color: var(--cor-destaque);
     box-shadow: 0 0 0 2px rgba(32, 201, 151, 0.2);
 }
@@ -251,7 +251,7 @@ html, body, [class*="css"]  {
 }
 
 /* ==========================================
-   BADGES (NATUREZA DA CATEGORIA E GRUPOS)
+   BADGES (NATUREZA, GRUPOS E STATUS)
    ========================================== */
 .badge-receita {
     background-color: rgba(32, 201, 151, 0.15);
@@ -284,4 +284,28 @@ html, body, [class*="css"]  {
     font-weight: 700;
     display: inline-block;
     border: 1px solid #ced4da;
+}
+
+.badge-efetivado {
+    background-color: #e6f7f5;
+    color: #2a9d8f;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    display: inline-block;
+    border: 1px solid #2a9d8f;
+    text-transform: uppercase;
+}
+
+.badge-pendente {
+    background-color: #fff5f0;
+    color: #e76f51;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    display: inline-block;
+    border: 1px solid #f4a261;
+    text-transform: uppercase;
 }

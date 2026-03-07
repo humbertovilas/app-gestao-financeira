@@ -2,33 +2,66 @@ import psycopg2
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
+import hashlib
+import os
+import time
 
 class GerenciadorBanco:
-    """Classe responsável por centralizar e blindar a comunicação com o PostgreSQL NeonDB."""
-    
     @staticmethod
-    @st.cache_resource(ttl=3600)
+    @st.cache_resource(ttl=3600, show_spinner=False)
     def obter_conexao():
         return psycopg2.connect(st.secrets["DATABASE_URL"])
 
     @staticmethod
-    @st.cache_resource
+    @st.cache_resource(show_spinner=False)
     def inicializar_banco():
         conn = GerenciadorBanco.obter_conexao()
         cursor = conn.cursor()
+        
         cursor.execute('''CREATE TABLE IF NOT EXISTS categorias 
                           (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, tipo TEXT NOT NULL)''')
+                          
         cursor.execute('''CREATE TABLE IF NOT EXISTS classificacoes 
                           (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, id_categoria INTEGER NOT NULL, 
                            FOREIGN KEY (id_categoria) REFERENCES categorias (id))''')
+                           
         cursor.execute('''CREATE TABLE IF NOT EXISTS eventos 
                           (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, id_classificacao INTEGER NOT NULL, 
                            FOREIGN KEY (id_classificacao) REFERENCES classificacoes (id))''')
+                           
+        cursor.execute('''CREATE TABLE IF NOT EXISTS usuarios 
+                          (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, email TEXT UNIQUE NOT NULL, 
+                           senha TEXT NOT NULL, perfil TEXT NOT NULL, ativo BOOLEAN DEFAULT TRUE)''')
+
+        cursor.execute('''CREATE TABLE IF NOT EXISTS lancamentos 
+                          (id SERIAL PRIMARY KEY, 
+                           data_digitacao DATE DEFAULT CURRENT_DATE,
+                           data_vencimento DATE NOT NULL, 
+                           data_efetivacao DATE, 
+                           valor_previsto NUMERIC(15,2) NOT NULL, 
+                           valor_realizado NUMERIC(15,2), 
+                           id_evento INTEGER NOT NULL, 
+                           id_classificacao INTEGER NOT NULL, 
+                           parcela_atual INTEGER DEFAULT 1, 
+                           total_parcelas INTEGER DEFAULT 1, 
+                           status TEXT NOT NULL DEFAULT 'Pendente', 
+                           observacao TEXT,
+                           FOREIGN KEY (id_evento) REFERENCES eventos (id),
+                           FOREIGN KEY (id_classificacao) REFERENCES classificacoes (id))''')
+
+        cursor.execute('''ALTER TABLE lancamentos ADD COLUMN IF NOT EXISTS data_digitacao DATE DEFAULT CURRENT_DATE''')
+
         conn.commit()
+        
+        df_admin = pd.read_sql_query("SELECT count(id) as total FROM usuarios", conn)
+        if df_admin.iloc[0]['total'] == 0:
+            senha_padrao = hashlib.sha256("admin123".encode('utf-8')).hexdigest()
+            cursor.execute("INSERT INTO usuarios (nome, email, senha, perfil, ativo) VALUES (%s, %s, %s, %s, %s)", 
+                           ("Administrador Mestre", "admin@sistema.com.br", senha_padrao, "Administrador", True))
+            conn.commit()
 
     @staticmethod
     def executar_query(query, params=(), is_select=True):
-        """Método único de CRUD. Processa INSERTS, UPDATES, DELETES e SELECTS com auto-reconexão blindada."""
         try:
             conn = GerenciadorBanco.obter_conexao()
             if is_select:
@@ -38,7 +71,6 @@ class GerenciadorBanco:
                 cursor.execute(query, params)
                 conn.commit()
         except Exception:
-            # Reconexão silenciosa absoluta. Captura erros nativos do banco ou do Pandas (ex: banco em repouso)
             st.cache_resource.clear()
             conn = GerenciadorBanco.obter_conexao()
             if is_select:
@@ -49,11 +81,8 @@ class GerenciadorBanco:
                 conn.commit()
 
 class UtilitariosVisuais:
-    """Classe responsável por gerir a injeção de CSS, ícones, estados e comportamentos de tela."""
-    
     @staticmethod
     def aplicar_configuracoes_ui():
-        import os
         caminho_raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         caminho_css = os.path.join(caminho_raiz, "style.css")
         
@@ -87,7 +116,6 @@ class UtilitariosVisuais:
 
     @staticmethod
     def inicializar_estados_modal():
-        """Cria as variáveis globais para controlar o formulário e a limpeza de dados."""
         if "form_reset" not in st.session_state: st.session_state.form_reset = 0
         if "form_cleared" not in st.session_state: st.session_state.form_cleared = False
         if "msg_sucesso" not in st.session_state: st.session_state.msg_sucesso = False
@@ -95,7 +123,6 @@ class UtilitariosVisuais:
 
     @staticmethod
     def preparar_modal():
-        """Reseta os estados para garantir que a modal abra limpa sempre que clicada."""
         st.session_state.form_reset = st.session_state.get("form_reset", 0) + 1
         st.session_state.form_cleared = False
         st.session_state.msg_sucesso = False
@@ -103,31 +130,13 @@ class UtilitariosVisuais:
 
     @staticmethod
     def exibir_mensagens():
-        """Renderiza as mensagens dentro das modais. Sucesso e Erro (nativos) apagando em 2s."""
-        exibiu_alerta = False
-
-        if st.session_state.get("msg_sucesso"):
-            st.success("Operação realizada com sucesso!", icon=":material/check_circle:")
+        if st.session_state.msg_sucesso:
+            st.success("Operação realizada com sucesso!")
+            time.sleep(1.0)
             st.session_state.msg_sucesso = False
-            exibiu_alerta = True
-            
-        if st.session_state.get("msg_erro"):
+            st.rerun()
+        elif st.session_state.msg_erro:
             st.error(st.session_state.msg_erro)
+            time.sleep(1.5)
             st.session_state.msg_erro = ""
-            exibiu_alerta = True
-
-        if exibiu_alerta:
-            js_alerta = """
-            <script>
-            const doc = window.parent.document;
-            setTimeout(() => {
-                const alertas = doc.querySelectorAll('[data-testid="stAlert"]');
-                alertas.forEach(alerta => {
-                    alerta.style.transition = 'opacity 0.5s ease';
-                    alerta.style.opacity = '0';
-                    setTimeout(() => alerta.style.display = 'none', 500);
-                });
-            }, 2000); // 2000 milissegundos = 2 segundos cravados
-            </script>
-            """
-            components.html(js_alerta, height=0, width=0)
+            st.rerun()

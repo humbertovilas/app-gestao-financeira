@@ -5,7 +5,6 @@ from infraestrutura.ProcessoCrud import UtilitariosVisuais, GerenciadorBanco
 # ==========================================
 # CONFIGURAÇÃO GLOBAL DA PÁGINA
 # ==========================================
-# Favicon agora apontando diretamente para o arquivo físico na sua pasta Imagens
 st.set_page_config(page_title="Gestão Financeira", page_icon="Imagens/FAVICON.png", layout="wide")
 
 # ==========================================
@@ -41,57 +40,79 @@ def verificar_login(email, senha):
 # ==========================================
 # MÓDULO VISUAL - TELA DE LOGIN
 # ==========================================
-def tela_login():
-    st.markdown(
-        """
-        <style>
-            [data-testid="collapsedControl"] {display: none;}
-            [data-testid="stSidebar"] {display: none;}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+def tela_login(container_principal):
+    # Envelopa todo o formulário na caixa de contenção
+    with container_principal.container():
+        st.markdown(
+            """
+            <style>
+                [data-testid="collapsedControl"] {display: none;}
+                [data-testid="stSidebar"] {display: none;}
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
 
-    c1, c2, c3 = st.columns([3, 4, 3])
-    with c2:
-        st.markdown("<br><br><br>", unsafe_allow_html=True)
-        
-        # Padronização de Marca (Branding Integrado)
-        html_marca_login = """
-        <div style="display: flex; justify-content: center; align-items: center; gap: 12px; margin-bottom: 0px;">
-            <span class="material-symbols-rounded" style="color: #20c997; font-size: 46px;">pie_chart</span>
-            <span style="color: var(--cor-primaria); font-size: 38px; font-weight: 700; letter-spacing: 0.5px;">Gestão Financeira</span>
-        </div>
-        """
-        st.markdown(html_marca_login, unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: var(--cor-texto); font-size: 16px; margin-top: 5px; margin-bottom: 30px;'>Acesso restrito e corporativo</p>", unsafe_allow_html=True)
-        
-        with st.container(border=True):
-            st.markdown("<div style='padding: 10px 0;'></div>", unsafe_allow_html=True)
-            email_login = st.text_input("E-mail corporativo:", key="log_email", placeholder="seu.email@empresa.com")
-            senha_login = st.text_input("Sua senha:", type="password", key="log_senha")
+        c1, c2, c3 = st.columns([3, 4, 3])
+        with c2:
+            st.markdown("<br><br><br>", unsafe_allow_html=True)
             
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("Acessar o sistema", type="primary", use_container_width=True):
-                if not email_login or not senha_login:
-                    st.warning("Por favor, preencha o e-mail e a senha.")
-                else:
-                    if verificar_login(email_login, senha_login):
-                        st.rerun()
+            html_marca_login = """
+            <div style="display: flex; justify-content: center; align-items: center; gap: 12px; margin-bottom: 0px;">
+                <span class="material-symbols-rounded" style="color: #20c997; font-size: 46px;">pie_chart</span>
+                <span style="color: var(--cor-primaria); font-size: 38px; font-weight: 700; letter-spacing: 0.5px;">Gestão Financeira</span>
+            </div>
+            """
+            st.markdown(html_marca_login, unsafe_allow_html=True)
+            st.markdown("<p style='text-align: center; color: var(--cor-texto); font-size: 16px; margin-top: 5px; margin-bottom: 30px;'>Acesso restrito e corporativo</p>", unsafe_allow_html=True)
+            
+            with st.container(border=True):
+                st.markdown("<div style='padding: 10px 0;'></div>", unsafe_allow_html=True)
+                email_login = st.text_input("E-mail corporativo:", key="log_email", placeholder="seu.email@empresa.com")
+                senha_login = st.text_input("Sua senha:", type="password", key="log_senha")
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("Acessar o sistema", type="primary", use_container_width=True):
+                    if not email_login or not senha_login:
+                        st.warning("Por favor, preencha o e-mail e a senha.")
                     else:
-                        st.error("Credenciais incorretas ou usuário inativo.")
+                        if verificar_login(email_login, senha_login):
+                            # Evapora o formulário instantaneamente antes de virar a página
+                            container_principal.empty() 
+                            st.rerun()
+                        else:
+                            st.error("Credenciais incorretas ou usuário inativo.")
 
 # ==========================================
 # ROTEADOR CENTRAL E MENUS
 # ==========================================
 def iniciar_sistema():
+    espaco_carregamento = st.empty()
+    
+    # A engrenagem elegante de carregamento
+    if not st.session_state.autenticado:
+        with espaco_carregamento:
+            st.markdown(
+                """
+                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+                <div style="text-align: center; padding-top: 100px; color: #888;">
+                    <h2><i class="fas fa-spinner fa-spin"></i> Carregando dados...</h2>
+                </div>
+                """, 
+                unsafe_allow_html=True
+            )
+            
     GerenciadorBanco.inicializar_banco()
     UtilitariosVisuais.aplicar_configuracoes_ui()
     
+    # Limpa a engrenagem
+    espaco_carregamento.empty()
+    
     if not st.session_state.autenticado:
-        tela_login()
+        # Cria a caixa de contenção que será passada para o Login
+        container_login = st.empty()
+        tela_login(container_login)
     else:
-        # Apenas Logotipo e Sessão Ativa no topo
         html_sidebar_header = f"""
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 25px; padding: 0 5px;">
             <span class="material-symbols-rounded" style="color: #20c997; font-size: 28px;">pie_chart</span>
@@ -106,7 +127,6 @@ def iniciar_sistema():
         """
         st.sidebar.markdown(html_sidebar_header, unsafe_allow_html=True)
         
-        # O botão Sair puro. O CSS modificado cuidará de mandá-lo para o rodapé.
         if st.sidebar.button("Sair do sistema", icon=":material/logout:", use_container_width=True):
             st.session_state.autenticado = False
             st.session_state.usuario_logado = ""
@@ -114,14 +134,14 @@ def iniciar_sistema():
             st.session_state.perfil_logado = ""
             st.rerun()
 
-        # Controle de Acesso Baseado em Papéis (RBAC)
         paginas_basicas = [
+            st.Page("modulos/Lancamento.py", title="Lançamentos", icon=":material/account_balance_wallet:"),
             st.Page("modulos/Categoria.py", title="Categorias", icon=":material/folder:"),
             st.Page("modulos/Classificacao.py", title="Classificações", icon=":material/account_tree:"),
             st.Page("modulos/Evento.py", title="Eventos", icon=":material/sell:")
         ]
         
-        dicionario_paginas = {"Cadastros Básicos": paginas_basicas}
+        dicionario_paginas = {"Operação e Cadastros": paginas_basicas}
         
         if st.session_state.perfil_logado == "Administrador":
             dicionario_paginas["Segurança"] = [st.Page("modulos/CadastroUsuario.py", title="Usuários do sistema", icon=":material/manage_accounts:")]
