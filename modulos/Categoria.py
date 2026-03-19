@@ -6,6 +6,9 @@ import time
 UtilitariosVisuais.aplicar_configuracoes_ui()
 UtilitariosVisuais.inicializar_estados_modal()
 
+# ==========================================
+# ACESSO A DADOS (CRUD)
+# ==========================================
 def carregar_dados(pesquisa=""):
     query = "SELECT id, nome, tipo FROM categorias"
     params = []
@@ -50,10 +53,11 @@ def callback_exclusao(id_cat):
         st.session_state.form_cleared = True
         st.session_state.form_reset += 1
 
+# ==========================================
+# MODAIS DE INTERAÇÃO
+# ==========================================
 @st.dialog(":material/add_circle: Nova categoria")
 def modal_inclusao(nome_base="", tipo_base="Despesa"):
-    msg_ph = st.empty()
-    
     val_nome = "" if st.session_state.form_cleared else nome_base
     idx_tipo = 0 if tipo_base == "Despesa" else 1
     idx_selecionado = 0 if st.session_state.form_cleared else idx_tipo
@@ -63,6 +67,7 @@ def modal_inclusao(nome_base="", tipo_base="Despesa"):
         
     st.text_input("Nome da categoria:", value=val_nome, key=f"inc_nome_cat_{st.session_state.form_reset}")
     st.selectbox("Natureza (Tipo):", ["Despesa", "Receita"], index=idx_selecionado, key=f"inc_tipo_cat_{st.session_state.form_reset}")
+    
     st.markdown("<br>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
     with c2:
@@ -71,15 +76,11 @@ def modal_inclusao(nome_base="", tipo_base="Despesa"):
         st.button("Salvar", type="primary", use_container_width=True, on_click=callback_inclusao)
         
     if st.session_state.get("msg_sucesso_inc"):
-        msg_ph.success("Salvo com sucesso! Pronto para o próximo registro.")
-        time.sleep(2)
-        msg_ph.empty()
+        st.toast("Operação realizada com sucesso!", icon="✅")
         st.session_state.msg_sucesso_inc = False
         st.session_state.form_cleared = False
     elif st.session_state.get("msg_erro"):
-        msg_ph.error(st.session_state.msg_erro)
-        time.sleep(2)
-        msg_ph.empty()
+        st.toast(st.session_state.msg_erro, icon="❌")
         st.session_state.msg_erro = ""
 
 @st.dialog(":material/edit: Editar categoria")
@@ -88,8 +89,10 @@ def modal_alteracao(id_cat, nome_atual, tipo_atual):
     val_nome = "" if st.session_state.form_cleared else nome_atual
     idx_tipo = 0 if tipo_atual == "Despesa" else 1
     idx_selecionado = 0 if st.session_state.form_cleared else idx_tipo
+    
     st.text_input("Nome da categoria:", value=val_nome, key=f"alt_nome_cat_{st.session_state.form_reset}")
     st.selectbox("Natureza (Tipo):", ["Despesa", "Receita"], index=idx_selecionado, key=f"alt_tipo_cat_{st.session_state.form_reset}")
+    
     st.markdown("<br>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns(3)
     with c2:
@@ -120,8 +123,10 @@ def modal_exclusao(id_cat, nome_atual):
         with c2:
             if st.button("Fechar", type="secondary", use_container_width=True): st.rerun()
 
+# ==========================================
+# INTERFACE PRINCIPAL
+# ==========================================
 if 'f_cat_pesq' not in st.session_state: st.session_state.f_cat_pesq = ""
-# Proteção contra falha de estado anterior ao atualizar o componente
 if 'f_cat_tipo' not in st.session_state or isinstance(st.session_state.f_cat_tipo, str): st.session_state.f_cat_tipo = []
 if 'show_f_cat' not in st.session_state: st.session_state.show_f_cat = False
 

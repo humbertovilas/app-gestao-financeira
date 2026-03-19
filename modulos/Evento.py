@@ -6,6 +6,9 @@ import time
 UtilitariosVisuais.aplicar_configuracoes_ui()
 UtilitariosVisuais.inicializar_estados_modal()
 
+# ==========================================
+# ACESSO A DADOS (CRUD)
+# ==========================================
 def carregar_dados(pesquisa=""):
     query = """
     SELECT e.id, e.nome, e.id_classificacao, c.nome as classificacao, cat.nome as categoria, cat.tipo 
@@ -75,9 +78,11 @@ def callback_exclusao(id_evento):
     st.session_state.form_cleared = True
     st.session_state.form_reset += 1
 
+# ==========================================
+# MODAIS DE INTERAÇÃO
+# ==========================================
 @st.dialog(":material/add_circle: Novo evento")
 def modal_inclusao(nome_base="", id_classificacao_base=None, nome_classificacao_base="", tipo_base=""):
-    msg_ph = st.empty()
     df_classificacoes = carregar_classificacoes()
     
     opcoes_classificacoes = []
@@ -108,15 +113,11 @@ def modal_inclusao(nome_base="", id_classificacao_base=None, nome_classificacao_
         st.button("Salvar", type="primary", use_container_width=True, on_click=callback_inclusao, disabled=len(opcoes_classificacoes)==0)
 
     if st.session_state.get("msg_sucesso_inc"):
-        msg_ph.success("Salvo com sucesso! Pronto para o próximo registro.")
-        time.sleep(2)
-        msg_ph.empty()
+        st.toast("Operação realizada com sucesso!", icon="✅")
         st.session_state.msg_sucesso_inc = False
         st.session_state.form_cleared = False
     elif st.session_state.get("msg_erro"):
-        msg_ph.error(st.session_state.msg_erro)
-        time.sleep(2)
-        msg_ph.empty()
+        st.toast(st.session_state.msg_erro, icon="❌")
         st.session_state.msg_erro = ""
 
 @st.dialog(":material/edit: Editar evento")
@@ -166,6 +167,9 @@ def modal_exclusao(id_evento, nome_atual):
         with c2:
             if st.button("Fechar", type="secondary", use_container_width=True): st.rerun()
 
+# ==========================================
+# INTERFACE PRINCIPAL
+# ==========================================
 if 'f_ev_pesq' not in st.session_state: st.session_state.f_ev_pesq = ""
 if 'f_ev_clas' not in st.session_state or isinstance(st.session_state.f_ev_clas, str): st.session_state.f_ev_clas = []
 if 'f_ev_cat' not in st.session_state or isinstance(st.session_state.f_ev_cat, str): st.session_state.f_ev_cat = []

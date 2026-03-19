@@ -309,3 +309,17 @@ html, body, [class*="css"]  {
     border: 1px solid #f4a261;
     text-transform: uppercase;
 }
+
+/* ==========================================
+   OCULTAR CAIXA NATIVA DE UPLOAD DE ARQUIVO (FORÇA BRUTA)
+   ========================================== */
+[data-testid="stUploadedFile"],
+[data-testid="stFileUploaderFile"],
+div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] + div {
+    display: none !important;
+    height: 0px !important;
+    overflow: hidden !important;
+    visibility: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}

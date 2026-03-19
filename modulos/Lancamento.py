@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, date, timedelta
 import calendar
+import os
 from infraestrutura.ProcessoCrud import GerenciadorBanco, UtilitariosVisuais
 
 UtilitariosVisuais.aplicar_configuracoes_ui()
@@ -23,7 +24,7 @@ def carregar_dados(data_ini, data_fim):
              THEN e.nome || ' (' || l.parcela_atual || '/' || l.total_parcelas || ')' 
              ELSE e.nome 
         END AS evento_exibicao,
-        c.nome AS classificacao, cat.nome AS categoria, cat.tipo,
+        c.nome AS classificacao, c.icone, cat.nome AS categoria, cat.tipo,
         COALESCE(l.valor_realizado, l.valor_previsto) AS valor_final,
         l.observacao, l.valor_previsto
     FROM lancamentos l
@@ -254,7 +255,7 @@ def modal_exclusao(id_lancamento, evento_nome):
             st.button("Confirmar exclusão", type="primary", use_container_width=True, on_click=callback_exclusao, args=(id_lancamento,))
 
 # ==========================================
-# CONSTRUÇÃO DA TELA (VIEW PRINCIPAL & MECÂNICA HÍBRIDA)
+# CONSTRUÇÃO DA TELA PRINCIPAL
 # ==========================================
 if 'show_filtros_lanc' not in st.session_state: st.session_state.show_filtros_lanc = False
 
@@ -373,7 +374,26 @@ else:
             c1.markdown(f"<span style='font-size: 13px; color: #495057;'>{data_dig_str}</span>", unsafe_allow_html=True)
             c2.markdown(f"<span style='font-size: 13px; color: #495057; font-weight: 600;'>{data_ven_str}</span>", unsafe_allow_html=True)
             c3.markdown(f"<div style='text-align: center;'><span class='{badge_status}'>{row['status']}</span></div>", unsafe_allow_html=True)
-            c4.markdown(f"<span style='font-weight: 600; color: #1a2a40; font-size: 14px;'>{row['evento_exibicao']}</span><br><span style='font-size: 11px; color: #adb5bd;'>{row['classificacao']}</span>", unsafe_allow_html=True)
+            
+            # TAMANHO AMPLIADO PARA 52px
+            icone_file = row['icone']
+            html_icone = ""
+            if pd.notna(icone_file) and icone_file != "Sem ícone":
+                b64_img = UtilitariosVisuais.obter_imagem_base64(os.path.join("Imagens", "Icones", icone_file))
+                if b64_img:
+                    html_icone = f"<img src='data:image/png;base64,{b64_img}' style='width: 52px; height: 52px; margin-right: 15px; vertical-align: middle; mix-blend-mode: multiply;' />"
+
+            bloco_evento = f"""
+            <div style='display: flex; align-items: center;'>
+                {html_icone}
+                <div>
+                    <span style='font-weight: 700; color: #1a2a40; font-size: 15px;'>{row['evento_exibicao']}</span><br>
+                    <span style='font-size: 12px; color: #6c757d; font-weight: 500;'>{row['classificacao']}</span>
+                </div>
+            </div>
+            """
+            c4.markdown(bloco_evento, unsafe_allow_html=True)
+            
             c5.markdown(f"<div style='text-align: center;'><span class='{badge_cat}'>{row['categoria']}</span></div>", unsafe_allow_html=True)
             
             c6.markdown(f"<div style='text-align: right; font-size: 13px;'>{val_ent}</div>", unsafe_allow_html=True)

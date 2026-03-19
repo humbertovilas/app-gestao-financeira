@@ -5,7 +5,11 @@ import streamlit.components.v1 as components
 import hashlib
 import os
 import time
+import base64
 
+# ==========================================
+# GERENCIADOR DE BANCO DE DADOS
+# ==========================================
 class GerenciadorBanco:
     @staticmethod
     @st.cache_resource(ttl=3600, show_spinner=False)
@@ -24,6 +28,8 @@ class GerenciadorBanco:
         cursor.execute('''CREATE TABLE IF NOT EXISTS classificacoes 
                           (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, id_categoria INTEGER NOT NULL, 
                            FOREIGN KEY (id_categoria) REFERENCES categorias (id))''')
+                           
+        cursor.execute('''ALTER TABLE classificacoes ADD COLUMN IF NOT EXISTS icone TEXT''')
                            
         cursor.execute('''CREATE TABLE IF NOT EXISTS eventos 
                           (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, id_classificacao INTEGER NOT NULL, 
@@ -80,6 +86,9 @@ class GerenciadorBanco:
                 cursor.execute(query, params)
                 conn.commit()
 
+# ==========================================
+# UTILITÁRIOS DE UX/UI E NOTIFICAÇÕES
+# ==========================================
 class UtilitariosVisuais:
     @staticmethod
     def aplicar_configuracoes_ui():
@@ -131,12 +140,37 @@ class UtilitariosVisuais:
     @staticmethod
     def exibir_mensagens():
         if st.session_state.msg_sucesso:
-            st.success("Operação realizada com sucesso!")
-            time.sleep(1.0)
+            st.toast("Operação realizada com sucesso!", icon="✅")
+            time.sleep(2.0)
             st.session_state.msg_sucesso = False
             st.rerun()
         elif st.session_state.msg_erro:
-            st.error(st.session_state.msg_erro)
-            time.sleep(1.5)
+            st.toast(st.session_state.msg_erro, icon="❌")
+            time.sleep(2.0)
             st.session_state.msg_erro = ""
             st.rerun()
+
+    @staticmethod
+    def obter_imagem_base64(caminho_relativo):
+        caminho_raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        caminho_absoluto = os.path.join(caminho_raiz, caminho_relativo)
+        try:
+            if os.path.exists(caminho_absoluto):
+                with open(caminho_absoluto, "rb") as img_file:
+                    return base64.b64encode(img_file.read()).decode()
+        except Exception:
+            pass
+        return ""
+
+    @staticmethod
+    def salvar_icone_upload(uploaded_file):
+        if uploaded_file is not None:
+            caminho_raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            caminho_icones = os.path.join(caminho_raiz, "Imagens", "Icones")
+            os.makedirs(caminho_icones, exist_ok=True)
+            caminho_arquivo = os.path.join(caminho_icones, uploaded_file.name)
+            
+            with open(caminho_arquivo, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            return uploaded_file.name
+        return "Sem ícone"

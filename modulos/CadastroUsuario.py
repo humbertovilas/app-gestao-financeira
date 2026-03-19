@@ -2,10 +2,14 @@ import streamlit as st
 from infraestrutura.ProcessoCrud import GerenciadorBanco, UtilitariosVisuais
 import pandas as pd
 import hashlib
+import time
 
 UtilitariosVisuais.aplicar_configuracoes_ui()
 UtilitariosVisuais.inicializar_estados_modal()
 
+# ==========================================
+# ACESSO A DADOS (CRUD)
+# ==========================================
 def gerar_hash_senha(senha):
     return hashlib.sha256(senha.encode('utf-8')).hexdigest()
 
@@ -65,6 +69,9 @@ def callback_exclusao(id_usr):
     st.session_state.form_cleared = True
     st.session_state.form_reset += 1
 
+# ==========================================
+# MODAIS DE INTERAÇÃO
+# ==========================================
 @st.dialog(":material/person_add: Novo usuário")
 def modal_inclusao():
     UtilitariosVisuais.exibir_mensagens()
@@ -111,10 +118,9 @@ def modal_alteracao(id_usr, nome, email, perfil, ativo):
 def modal_exclusao(id_usr, nome, email):
     UtilitariosVisuais.exibir_mensagens()
     if email == "admin@sistema.com.br" or email == st.session_state.email_logado:
-        st.error("Bloqueio de segurança: Não é possível excluir o seu próprio usuário ou o Administrador Mestre.")
-        c1, c2 = st.columns(2)
-        with c2:
-            if st.button("Fechar", type="secondary", use_container_width=True): st.rerun()
+        st.toast("Bloqueio de segurança: Não é possível excluir o seu próprio usuário ou o Administrador Mestre.", icon="🛡️")
+        time.sleep(2.0)
+        st.rerun()
     elif not st.session_state.form_cleared:
         html_confirmacao = f"""
         <div style="border-left: 5px solid #e76f51; background-color: #f8f9fa; padding: 20px; border-radius: 4px; margin-bottom: 20px; border: 1px solid #e9ecef;">
@@ -135,6 +141,9 @@ def modal_exclusao(id_usr, nome, email):
         with c2:
             if st.button("Fechar", type="secondary", use_container_width=True): st.rerun()
 
+# ==========================================
+# INTERFACE PRINCIPAL
+# ==========================================
 if 'f_usr_pesq' not in st.session_state: st.session_state.f_usr_pesq = ""
 if 'f_usr_perf' not in st.session_state: st.session_state.f_usr_perf = "Todos os perfis"
 if 'f_usr_stat' not in st.session_state: st.session_state.f_usr_stat = "Todos os status"
