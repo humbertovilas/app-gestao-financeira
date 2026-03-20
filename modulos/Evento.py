@@ -73,10 +73,15 @@ def callback_alteracao(id_evento):
         st.session_state.msg_erro = "Nome do evento e classificação são obrigatórios."
 
 def callback_exclusao(id_evento):
-    GerenciadorBanco.executar_query("DELETE FROM eventos WHERE id = %s", (int(id_evento),), is_select=False)
-    st.session_state.msg_sucesso = True
-    st.session_state.form_cleared = True
-    st.session_state.form_reset += 1
+    df_lanc = GerenciadorBanco.executar_query("SELECT count(id) as total FROM lancamentos WHERE id_evento = %s", (int(id_evento),))
+    if df_lanc.iloc[0]['total'] > 0:
+        st.session_state.msg_erro = "Ação bloqueada: Existem lançamentos financeiros vinculados a este evento."
+        st.session_state.form_cleared = True
+    else:
+        GerenciadorBanco.executar_query("DELETE FROM eventos WHERE id = %s", (int(id_evento),), is_select=False)
+        st.session_state.msg_sucesso = True
+        st.session_state.form_cleared = True
+        st.session_state.form_reset += 1
 
 # ==========================================
 # MODAIS DE INTERAÇÃO

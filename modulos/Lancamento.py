@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, date, timedelta
 import calendar
 import os
+import time
 from infraestrutura.ProcessoCrud import GerenciadorBanco, UtilitariosVisuais
 
 UtilitariosVisuais.aplicar_configuracoes_ui()
@@ -11,6 +12,18 @@ UtilitariosVisuais.inicializar_estados_modal()
 def formatar_moeda(valor):
     if pd.isna(valor): return "R$ 0,00"
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+# ==========================================
+# GATILHOS DE INTERAÇÃO (CALLBACKS DE TELA)
+# ==========================================
+def on_change_intervalo(fr_id, dt_emissao):
+    """Calcula automaticamente o 1º vencimento se o intervalo for maior que 1."""
+    intervalo = st.session_state.get(f"ln_intervalo_{fr_id}", 1)
+    if intervalo > 1:
+        nova_data = dt_emissao + timedelta(days=intervalo)
+        st.session_state[f"ln_data_venc_{fr_id}"] = nova_data
+        if nova_data > dt_emissao:
+            st.session_state[f"ln_status_{fr_id}"] = "Pendente"
 
 # ==========================================
 # REGRAS DE NEGÓCIO E CONSULTAS
@@ -53,7 +66,7 @@ def callback_salvar_lancamento(acao="inserir", id_lancamento=None):
     valor = st.session_state.get(f"ln_valor_{fr_id}", 0.0)
     parcelas = st.session_state.get(f"ln_parcelas_{fr_id}", 1)
     intervalo = st.session_state.get(f"ln_intervalo_{fr_id}", 1)
-    status = st.session_state.get(f"ln_status_{fr_id}", "Pendente")
+    status_tela = st.session_state.get(f"ln_status_{fr_id}", "Pendente")
     obs = st.session_state.get(f"ln_obs_{fr_id}", "")
     
     evento_selecionado = st.session_state.get(f"ln_evento_sel_{fr_id}")
@@ -64,51 +77,62 @@ def callback_salvar_lancamento(acao="inserir", id_lancamento=None):
         return
 
     id_evento_final = None
-    id_class_final = int(classificacao_selecionada.split(" - ")[0]) if classificacao_selecionada else None
+    id_class_final = None
 
     if evento_selecionado == "+ Criar novo evento...":
         nome_novo_evento = st.session_state.get(f"ln_novo_evento_{fr_id}", "").strip()
+        
+        if classificacao_selecionada:
+            df_cls_id = GerenciadorBanco.executar_query("SELECT id FROM classificacoes WHERE nome = %s LIMIT 1", (classificacao_selecionada,))
+            if not df_cls_id.empty:
+                id_class_final = int(df_cls_id.iloc[0]['id'])
+        
         if not nome_novo_evento or not id_class_final:
             st.session_state.msg_erro = "Preencha o nome do novo evento e a classificação vinculada."
             return
+            
         GerenciadorBanco.executar_query("INSERT INTO eventos (nome, id_classificacao) VALUES (%s, %s)", (nome_novo_evento, id_class_final), is_select=False)
         df_novo = GerenciadorBanco.executar_query("SELECT id FROM eventos WHERE nome = %s ORDER BY id DESC LIMIT 1", (nome_novo_evento,))
         id_evento_final = int(df_novo.iloc[0]['id'])
     else:
-        id_evento_final = int(evento_selecionado.split(" - ")[0])
-        df_ev = GerenciadorBanco.executar_query("SELECT id_classificacao FROM eventos WHERE id = %s", (id_evento_final,))
-        id_class_final = int(df_ev.iloc[0]['id_classificacao'])
+        df_ev = GerenciadorBanco.executar_query("SELECT id, id_classificacao FROM eventos WHERE nome = %s LIMIT 1", (evento_selecionado,))
+        if not df_ev.empty:
+            id_evento_final = int(df_ev.iloc[0]['id'])
+            id_class_final = int(df_ev.iloc[0]['id_classificacao'])
 
     if acao == "editar" and id_lancamento:
-        val_realizado = valor if status == "Efetivado" else None
-        dt_efetivacao = dt_venc_manual if status == "Efetivado" else None
+        status_final = "Pendente" if dt_venc_manual > dt_digitacao else status_tela
+        val_realizado = valor if status_final == "Efetivado" else None
+        dt_efetivacao = dt_venc_manual if status_final == "Efetivado" else None
+        
         GerenciadorBanco.executar_query(
             """UPDATE lancamentos 
                SET data_vencimento = %s, data_efetivacao = %s, valor_previsto = %s, valor_realizado = %s, 
                    id_evento = %s, id_classificacao = %s, status = %s, observacao = %s 
                WHERE id = %s""",
-            (dt_venc_manual, dt_efetivacao, valor, val_realizado, id_evento_final, id_class_final, status, obs, id_lancamento),
+            (dt_venc_manual, dt_efetivacao, valor, val_realizado, id_evento_final, id_class_final, status_final, obs, id_lancamento),
             is_select=False
         )
     else:
         for i in range(parcelas):
-            if parcelas == 1:
-                data_venc = dt_venc_manual
-            else:
-                data_venc = dt_digitacao + timedelta(days=intervalo * (i + 1))
-                
-            val_realizado = valor if status == "Efetivado" else None
-            dt_efetivacao = data_venc if status == "Efetivado" else None
+            data_venc = dt_venc_manual + timedelta(days=intervalo * i)
+            status_final = "Pendente" if data_venc > dt_digitacao else status_tela
+            val_realizado = valor if status_final == "Efetivado" else None
+            dt_efetivacao = data_venc if status_final == "Efetivado" else None
             
             GerenciadorBanco.executar_query(
                 """INSERT INTO lancamentos 
                    (data_digitacao, data_vencimento, data_efetivacao, valor_previsto, valor_realizado, id_evento, id_classificacao, parcela_atual, total_parcelas, status, observacao) 
                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
-                (dt_digitacao, data_venc, dt_efetivacao, valor, val_realizado, id_evento_final, id_class_final, i+1, parcelas, status, obs),
+                (dt_digitacao, data_venc, dt_efetivacao, valor, val_realizado, id_evento_final, id_class_final, i+1, parcelas, status_final, obs),
                 is_select=False
             )
+    
+    if acao == "inserir":
+        st.session_state.msg_sucesso_cont = True # Mantém a modal aberta
+    else:
+        st.session_state.msg_sucesso = True # Fecha a modal
         
-    st.session_state.msg_sucesso = True
     st.session_state.form_cleared = True
     st.session_state.form_reset += 1
 
@@ -144,30 +168,40 @@ def callback_exclusao(id_lancamento):
 # ==========================================
 @st.dialog(":material/account_balance_wallet: Lançamento financeiro", width="large")
 def modal_formulario(acao="inserir", id_lancamento=None, dados_pre=None):
-    UtilitariosVisuais.exibir_mensagens()
+    # O validador global de mensagens foi removido do topo para evitar fechamento indesejado
     fr_id = st.session_state.get("form_reset", 0)
     st.session_state["ln_form_reset"] = fr_id
     
     df_eventos, df_class = obter_auxiliares()
-    op_eventos = ["+ Criar novo evento..."] + [f"{r['id']} - {r['nome']}" for _, r in df_eventos.iterrows()]
-    op_class = [f"{r['id']} - {r['nome']}" for _, r in df_class.iterrows()]
     
-    v_data_dig = date.today()
-    v_data_venc = date.today()
-    v_valor = 0.0
-    v_status = 0
+    op_eventos = ["+ Criar novo evento..."] + (df_eventos['nome'].tolist() if not df_eventos.empty else [])
+    op_class = df_class['nome'].tolist() if not df_class.empty else []
+    
+    v_data_dig = dados_pre['data_digitacao'] if (dados_pre is not None and pd.notnull(dados_pre['data_digitacao'])) else date.today()
+    
+    if f"ln_data_venc_{fr_id}" in st.session_state:
+        v_data_venc = st.session_state[f"ln_data_venc_{fr_id}"]
+    else:
+        v_data_venc = dados_pre['data_vencimento'] if dados_pre is not None else date.today()
+        
+    if f"ln_valor_{fr_id}" in st.session_state:
+        v_valor = st.session_state[f"ln_valor_{fr_id}"]
+    else:
+        v_valor = float(dados_pre['valor_previsto']) if dados_pre is not None else 0.0
+        
+    if f"ln_obs_{fr_id}" in st.session_state:
+        v_obs = st.session_state[f"ln_obs_{fr_id}"]
+    else:
+        v_obs = dados_pre['observacao'] if dados_pre is not None and dados_pre['observacao'] else ""
+        
     v_evento_idx = 0
-    v_obs = ""
-    
     if dados_pre is not None:
-        v_data_dig = dados_pre['data_digitacao'] if pd.notnull(dados_pre['data_digitacao']) else date.today()
-        v_data_venc = dados_pre['data_vencimento']
-        v_valor = float(dados_pre['valor_previsto'])
         v_status = 1 if dados_pre['status'] == 'Efetivado' else 0
-        v_obs = dados_pre['observacao'] if dados_pre['observacao'] else ""
-        str_evento = f"{dados_pre['id_evento']} - {dados_pre['nome_base_evento']}"
+        str_evento = dados_pre['nome_base_evento']
         if str_evento in op_eventos:
             v_evento_idx = op_eventos.index(str_evento)
+    else:
+        v_status = 0
 
     if acao == "editar":
         st.info("Modo de Edição: Você está alterando apenas esta parcela específica.")
@@ -180,44 +214,70 @@ def modal_formulario(acao="inserir", id_lancamento=None, dados_pre=None):
 
     c3, c4, c5, c6 = st.columns(4)
     c3.number_input("Total de parcelas:", min_value=1, max_value=240, value=1, step=1, disabled=(acao=="editar"), key=f"ln_parcelas_{fr_id}")
-    c4.number_input("Intervalo de dias:", min_value=1, value=1, step=1, disabled=(acao=="editar"), key=f"ln_intervalo_{fr_id}")
     
-    val_parcelas = st.session_state.get(f"ln_parcelas_{fr_id}", 1)
-    desabilita_venc = (val_parcelas > 1) and (acao != "editar")
-
-    c5.date_input("Data de vencimento:", value=v_data_venc, format="DD/MM/YYYY", disabled=desabilita_venc, key=f"ln_data_venc_{fr_id}")
+    c4.number_input("Intervalo de dias:", min_value=1, value=1, step=1, disabled=(acao=="editar"), key=f"ln_intervalo_{fr_id}", on_change=on_change_intervalo, args=(fr_id, v_data_dig))
     
+    c5.date_input("Data de vencimento:", value=v_data_venc, format="DD/MM/YYYY", disabled=False, key=f"ln_data_venc_{fr_id}")
+    
+    # --- ENGENHARIA DA TRAVA VISUAL ---
     data_selecionada = st.session_state.get(f"ln_data_venc_{fr_id}", v_data_venc)
-    if acao in ["inserir", "duplicar"]:
-        idx_status_final = 1 if data_selecionada <= date.today() else 0
-    else:
-        idx_status_final = v_status
+    travar_status = data_selecionada > v_data_dig
 
-    c6.selectbox("Status inicial:", ["Pendente", "Efetivado"], index=idx_status_final, key=f"ln_status_{fr_id}")
+    if travar_status:
+        st.session_state[f"ln_status_{fr_id}"] = "Pendente"
+    elif f"ln_status_{fr_id}" not in st.session_state:
+        if acao in ["inserir", "duplicar"]:
+            st.session_state[f"ln_status_{fr_id}"] = "Efetivado"
+        else:
+            st.session_state[f"ln_status_{fr_id}"] = "Efetivado" if v_status == 1 else "Pendente"
+
+    c6.selectbox("Status inicial:", ["Pendente", "Efetivado"], disabled=travar_status, key=f"ln_status_{fr_id}")
+    # ----------------------------------
     
     st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
     
+    # --- ENGENHARIA DO FOCO E ORDEM VISUAL ---
     c7, c8 = st.columns(2)
+    
+    # Campo limpo de Dicas
     evento_sel = c7.selectbox("Evento originador (Credor/Devedor):", op_eventos, index=v_evento_idx, key=f"ln_evento_sel_{fr_id}")
     
     if evento_sel == "+ Criar novo evento...":
-        c7.text_input("Digite o nome do novo evento:", placeholder="Ex: Conta de Luz CPFL...", key=f"ln_novo_evento_{fr_id}")
         c8.selectbox("Vincule a uma classificação:", op_class, key=f"ln_class_sel_{fr_id}")
+        st.text_input("Digite o nome do novo evento:", placeholder="Ex: Conta de Luz CPFL...", key=f"ln_novo_evento_{fr_id}")
     else:
-        id_ev = int(evento_sel.split(" - ")[0])
-        nome_class = GerenciadorBanco.executar_query("SELECT c.nome FROM eventos e JOIN classificacoes c ON e.id_classificacao = c.id WHERE e.id = %s", (id_ev,)).iloc[0]['nome']
-        c8.text_input("Classificação (Automática):", value=nome_class, disabled=True)
-        st.session_state[f"ln_class_sel_{fr_id}"] = f"0 - {nome_class}" 
+        df_ev_query = GerenciadorBanco.executar_query("SELECT id FROM eventos WHERE nome = %s LIMIT 1", (evento_sel,))
+        if not df_ev_query.empty:
+            id_ev = int(df_ev_query.iloc[0]['id'])
+            nome_class = GerenciadorBanco.executar_query("SELECT c.nome FROM eventos e JOIN classificacoes c ON e.id_classificacao = c.id WHERE e.id = %s", (id_ev,)).iloc[0]['nome']
+            c8.text_input("Classificação (Automática):", value=nome_class, disabled=True)
+            st.session_state[f"ln_class_sel_{fr_id}"] = nome_class
         
     st.text_input("Observações / Justificativas opcionais:", value=v_obs, key=f"ln_obs_{fr_id}")
     
     st.markdown("<br>", unsafe_allow_html=True)
     b1, b2, b3 = st.columns([4, 3, 3])
+    
+    # Salvar primeiro na ordem DOM = recebe o TAB antes do Fechar
     with b2:
-        if st.button("Cancelar", type="secondary", use_container_width=True): st.rerun()
-    with b3:
-        lbl_btn = "Atualizar Parcela" if acao == "editar" else "Salvar lote financeiro"
+        lbl_btn = "Atualizar Parcela" if acao == "editar" else "Salvar Lançamento"
         st.button(lbl_btn, type="primary", use_container_width=True, on_click=callback_salvar_lancamento, args=(acao, id_lancamento))
+    
+    with b3:
+        if st.button("Fechar", type="secondary", use_container_width=True): st.rerun()
+
+    # --- TRATAMENTO NATIVO DE MENSAGENS PARA MODAL PERSISTENTE ---
+    if st.session_state.get("msg_sucesso_cont"):
+        st.toast("Operação realizada com sucesso!", icon="✅")
+        st.session_state.msg_sucesso_cont = False
+    elif st.session_state.get("msg_sucesso"):
+        st.toast("Operação realizada com sucesso!", icon="✅")
+        time.sleep(2.0)
+        st.session_state.msg_sucesso = False
+        st.rerun()
+    elif st.session_state.get("msg_erro"):
+        st.toast(st.session_state.msg_erro, icon="❌")
+        st.session_state.msg_erro = ""
 
 @st.dialog(":material/check_circle: Conciliar lançamento")
 def modal_baixa(id_lancamento, evento_nome, valor_original):
@@ -252,7 +312,8 @@ def modal_exclusao(id_lancamento, evento_nome):
         with c2:
             if st.button("Cancelar", type="secondary", use_container_width=True): st.rerun()
         with c3:
-            st.button("Confirmar exclusão", type="primary", use_container_width=True, on_click=callback_exclusao, args=(id_lancamento,))
+            # Correção do Padrão Visual: "Confirmar exclusão" -> "Confirmar"
+            st.button("Confirmar", type="primary", use_container_width=True, on_click=callback_exclusao, args=(id_lancamento,))
 
 # ==========================================
 # CONSTRUÇÃO DA TELA PRINCIPAL
@@ -275,7 +336,7 @@ with c_filtrar:
     if st.button("Filtrar", type="tertiary", icon=":material/search:", use_container_width=True):
         st.session_state.show_filtros_lanc = not st.session_state.show_filtros_lanc; st.rerun()
 with c_inserir:
-    if st.button("Inserir lote", type="primary", icon=":material/add:", use_container_width=True): 
+    if st.button("Inserir", type="primary", icon=":material/add:", use_container_width=True): 
         UtilitariosVisuais.preparar_modal(); modal_formulario("inserir")
 
 if st.session_state.show_filtros_lanc:
@@ -343,11 +404,11 @@ html_cabecalho = '''
         <div style="flex: 0.9;">Venc.</div>
         <div style="flex: 1.1; text-align: center;">Status</div>
         <div style="flex: 2.5;">Evento financeiro</div>
-        <div style="flex: 1.3; text-align: center;">Categoria</div>
-        <div style="flex: 1.1; text-align: right;">Entrada</div>
-        <div style="flex: 1.1; text-align: right;">Saída</div>
-        <div style="flex: 1.1; text-align: right;">Saldo</div>
-        <div style="flex: 2.0; text-align: center;">Ações</div>
+        <div style="flex: 1.2; text-align: center;">Categoria</div>
+        <div style="flex: 1.0; text-align: right;">Entrada</div>
+        <div style="flex: 1.0; text-align: right;">Saída</div>
+        <div style="flex: 1.0; text-align: right;">Saldo</div>
+        <div style="flex: 2.6; text-align: center;">Ações</div>
     </div>
 </div>
 '''
@@ -369,13 +430,12 @@ else:
             val_ent = f"<span style='color:#0f8661; font-weight:600;'>{formatar_moeda(row['entrada'])}</span>" if row['entrada'] > 0 else ""
             val_sai = f"<span style='color:#b3391b; font-weight:600;'>{formatar_moeda(row['saida'])}</span>" if row['saida'] > 0 else ""
             
-            c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12 = st.columns([0.9, 0.9, 1.1, 2.5, 1.3, 1.1, 1.1, 1.1, 0.5, 0.5, 0.5, 0.5], vertical_alignment="center")
+            c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12 = st.columns([0.9, 0.9, 1.1, 2.5, 1.2, 1.0, 1.0, 1.0, 0.65, 0.65, 0.65, 0.65], vertical_alignment="center")
             
             c1.markdown(f"<span style='font-size: 13px; color: #495057;'>{data_dig_str}</span>", unsafe_allow_html=True)
             c2.markdown(f"<span style='font-size: 13px; color: #495057; font-weight: 600;'>{data_ven_str}</span>", unsafe_allow_html=True)
             c3.markdown(f"<div style='text-align: center;'><span class='{badge_status}'>{row['status']}</span></div>", unsafe_allow_html=True)
             
-            # TAMANHO AMPLIADO PARA 52px
             icone_file = row['icone']
             html_icone = ""
             if pd.notna(icone_file) and icone_file != "Sem ícone":
@@ -401,18 +461,18 @@ else:
             c8.markdown(f"<div style='text-align: right; font-size: 13px; font-weight: 700; color: #1a2a40;'>{formatar_moeda(row['saldo'])}</div>", unsafe_allow_html=True)
             
             if row['status'] == 'Pendente':
-                if c9.button(" ", icon=":material/done_all:", key=f"bx_{id_lanc}", help="Conciliar e Efetivar"):
+                if c9.button(" ", icon=":material/done_all:", key=f"bx_{id_lanc}", help="Conciliar e Efetivar", use_container_width=True):
                     UtilitariosVisuais.preparar_modal(); modal_baixa(int(id_lanc), row['evento_exibicao'], row['valor_previsto'])
             else:
-                c9.markdown("<div style='text-align: center; color: #ced4da; margin-top: 8px;'><span class='material-symbols-rounded'>done_all</span></div>", unsafe_allow_html=True)
+                c9.button(" ", icon=":material/done_all:", key=f"bx_dis_{id_lanc}", help="Lançamento já efetivado", disabled=True, use_container_width=True)
                 
-            if c10.button(" ", icon=":material/edit:", key=f"ed_{id_lanc}", help="Editar Parcela"):
+            if c10.button(" ", icon=":material/edit:", key=f"ed_{id_lanc}", help="Editar Parcela", use_container_width=True):
                 UtilitariosVisuais.preparar_modal(); modal_formulario("editar", id_lancamento=id_lanc, dados_pre=row)
                 
-            if c11.button(" ", icon=":material/content_copy:", key=f"dp_{id_lanc}", help="Duplicar Lançamento"):
+            if c11.button(" ", icon=":material/content_copy:", key=f"dp_{id_lanc}", help="Duplicar Lançamento", use_container_width=True):
                 UtilitariosVisuais.preparar_modal(); modal_formulario("duplicar", dados_pre=row)
                 
-            if c12.button(" ", icon=":material/delete:", key=f"del_{id_lanc}", help="Excluir Parcela"):
+            if c12.button(" ", icon=":material/delete:", key=f"del_{id_lanc}", help="Excluir Parcela", use_container_width=True):
                 UtilitariosVisuais.preparar_modal(); modal_exclusao(int(id_lanc), row['evento_exibicao'])
                 
             st.markdown("<hr style='margin: 8px 0; border: 0; border-top: 1px solid #e9ecef;'>", unsafe_allow_html=True)

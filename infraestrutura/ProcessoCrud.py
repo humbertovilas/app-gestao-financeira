@@ -19,52 +19,61 @@ class GerenciadorBanco:
     @staticmethod
     @st.cache_resource(show_spinner=False)
     def inicializar_banco():
-        conn = GerenciadorBanco.obter_conexao()
-        cursor = conn.cursor()
-        
-        cursor.execute('''CREATE TABLE IF NOT EXISTS categorias 
-                          (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, tipo TEXT NOT NULL)''')
-                          
-        cursor.execute('''CREATE TABLE IF NOT EXISTS classificacoes 
-                          (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, id_categoria INTEGER NOT NULL, 
-                           FOREIGN KEY (id_categoria) REFERENCES categorias (id))''')
-                           
-        cursor.execute('''ALTER TABLE classificacoes ADD COLUMN IF NOT EXISTS icone TEXT''')
-                           
-        cursor.execute('''CREATE TABLE IF NOT EXISTS eventos 
-                          (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, id_classificacao INTEGER NOT NULL, 
-                           FOREIGN KEY (id_classificacao) REFERENCES classificacoes (id))''')
-                           
-        cursor.execute('''CREATE TABLE IF NOT EXISTS usuarios 
-                          (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, email TEXT UNIQUE NOT NULL, 
-                           senha TEXT NOT NULL, perfil TEXT NOT NULL, ativo BOOLEAN DEFAULT TRUE)''')
+        def executar_criacao_tabelas(conexao):
+            cursor = conexao.cursor()
+            
+            cursor.execute('''CREATE TABLE IF NOT EXISTS categorias 
+                              (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, tipo TEXT NOT NULL)''')
+                              
+            cursor.execute('''CREATE TABLE IF NOT EXISTS classificacoes 
+                              (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, id_categoria INTEGER NOT NULL, 
+                               FOREIGN KEY (id_categoria) REFERENCES categorias (id))''')
+                               
+            cursor.execute('''ALTER TABLE classificacoes ADD COLUMN IF NOT EXISTS icone TEXT''')
+                               
+            cursor.execute('''CREATE TABLE IF NOT EXISTS eventos 
+                              (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, id_classificacao INTEGER NOT NULL, 
+                               FOREIGN KEY (id_classificacao) REFERENCES classificacoes (id))''')
+                               
+            cursor.execute('''CREATE TABLE IF NOT EXISTS usuarios 
+                              (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, email TEXT UNIQUE NOT NULL, 
+                               senha TEXT NOT NULL, perfil TEXT NOT NULL, ativo BOOLEAN DEFAULT TRUE)''')
 
-        cursor.execute('''CREATE TABLE IF NOT EXISTS lancamentos 
-                          (id SERIAL PRIMARY KEY, 
-                           data_digitacao DATE DEFAULT CURRENT_DATE,
-                           data_vencimento DATE NOT NULL, 
-                           data_efetivacao DATE, 
-                           valor_previsto NUMERIC(15,2) NOT NULL, 
-                           valor_realizado NUMERIC(15,2), 
-                           id_evento INTEGER NOT NULL, 
-                           id_classificacao INTEGER NOT NULL, 
-                           parcela_atual INTEGER DEFAULT 1, 
-                           total_parcelas INTEGER DEFAULT 1, 
-                           status TEXT NOT NULL DEFAULT 'Pendente', 
-                           observacao TEXT,
-                           FOREIGN KEY (id_evento) REFERENCES eventos (id),
-                           FOREIGN KEY (id_classificacao) REFERENCES classificacoes (id))''')
+            cursor.execute('''CREATE TABLE IF NOT EXISTS lancamentos 
+                              (id SERIAL PRIMARY KEY, 
+                               data_digitacao DATE DEFAULT CURRENT_DATE,
+                               data_vencimento DATE NOT NULL, 
+                               data_efetivacao DATE, 
+                               valor_previsto NUMERIC(15,2) NOT NULL, 
+                               valor_realizado NUMERIC(15,2), 
+                               id_evento INTEGER NOT NULL, 
+                               id_classificacao INTEGER NOT NULL, 
+                               parcela_atual INTEGER DEFAULT 1, 
+                               total_parcelas INTEGER DEFAULT 1, 
+                               status TEXT NOT NULL DEFAULT 'Pendente', 
+                               observacao TEXT,
+                               FOREIGN KEY (id_evento) REFERENCES eventos (id),
+                               FOREIGN KEY (id_classificacao) REFERENCES classificacoes (id))''')
 
-        cursor.execute('''ALTER TABLE lancamentos ADD COLUMN IF NOT EXISTS data_digitacao DATE DEFAULT CURRENT_DATE''')
+            cursor.execute('''ALTER TABLE lancamentos ADD COLUMN IF NOT EXISTS data_digitacao DATE DEFAULT CURRENT_DATE''')
 
-        conn.commit()
-        
-        df_admin = pd.read_sql_query("SELECT count(id) as total FROM usuarios", conn)
-        if df_admin.iloc[0]['total'] == 0:
-            senha_padrao = hashlib.sha256("admin123".encode('utf-8')).hexdigest()
-            cursor.execute("INSERT INTO usuarios (nome, email, senha, perfil, ativo) VALUES (%s, %s, %s, %s, %s)", 
-                           ("Administrador Mestre", "admin@sistema.com.br", senha_padrao, "Administrador", True))
-            conn.commit()
+            conexao.commit()
+            
+            df_admin = pd.read_sql_query("SELECT count(id) as total FROM usuarios", conexao)
+            if df_admin.iloc[0]['total'] == 0:
+                senha_padrao = hashlib.sha256("admin123".encode('utf-8')).hexdigest()
+                cursor.execute("INSERT INTO usuarios (nome, email, senha, perfil, ativo) VALUES (%s, %s, %s, %s, %s)", 
+                               ("Administrador Mestre", "admin@sistema.com.br", senha_padrao, "Administrador", True))
+                conexao.commit()
+
+        try:
+            conn = GerenciadorBanco.obter_conexao()
+            executar_criacao_tabelas(conn)
+        except Exception:
+            # Se a conexão do cache estiver morta (Neon DB dormindo), limpa e tenta de novo
+            st.cache_resource.clear()
+            conn = GerenciadorBanco.obter_conexao()
+            executar_criacao_tabelas(conn)
 
     @staticmethod
     def executar_query(query, params=(), is_select=True):
@@ -77,6 +86,7 @@ class GerenciadorBanco:
                 cursor.execute(query, params)
                 conn.commit()
         except Exception:
+            # Tolerância a falhas global para consultas
             st.cache_resource.clear()
             conn = GerenciadorBanco.obter_conexao()
             if is_select:
