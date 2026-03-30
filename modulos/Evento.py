@@ -1,260 +1,170 @@
 import streamlit as st
-from infraestrutura.ProcessoCrud import GerenciadorBanco, UtilitariosVisuais
 import pandas as pd
 import time
+from infraestrutura.ProcessoCrud import GerenciadorBanco, UtilitariosVisuais
 
+# ==========================================
+# 1. CONFIGURAÇÕES E ESTADOS DE SESSÃO
+# ==========================================
 UtilitariosVisuais.aplicar_configuracoes_ui()
 UtilitariosVisuais.inicializar_estados_modal()
 
-# ==========================================
-# ACESSO A DADOS (CRUD)
-# ==========================================
-def carregar_dados(pesquisa=""):
-    query = """
-    SELECT e.id, e.nome, e.id_classificacao, c.nome as classificacao, cat.nome as categoria, cat.tipo 
-    FROM eventos e
-    INNER JOIN classificacoes c ON e.id_classificacao = c.id
-    INNER JOIN categorias cat ON c.id_categoria = cat.id
-    """
-    params = []
-    if pesquisa:
-        query += " WHERE e.nome ILIKE %s"
-        params.append(f"%{pesquisa}%")
-    query += " ORDER BY e.nome ASC"
-    return GerenciadorBanco.executar_query(query, tuple(params))
+if 'modal_ev_ativa' not in st.session_state: st.session_state.modal_ev_ativa = None
+if 'modal_ev_id' not in st.session_state: st.session_state.modal_ev_id = None
+if 'modal_ev_dados' not in st.session_state: st.session_state.modal_ev_dados = None
+if 'show_filtros_ev' not in st.session_state: st.session_state.show_filtros_ev = False
+if 'f_ev_busca' not in st.session_state: st.session_state.f_ev_busca = ""
 
-def carregar_classificacoes():
+# ==========================================
+# 2. FUNÇÕES DE APOIO E CONSULTAS
+# ==========================================
+def carregar_dados():
     query = """
-    SELECT c.id, c.nome, cat.tipo 
-    FROM classificacoes c
-    INNER JOIN categorias cat ON c.id_categoria = cat.id
-    ORDER BY c.nome ASC
+        SELECT e.id, e.nome, c.nome as classificacao_nome, e.id_classificacao
+        FROM eventos e
+        INNER JOIN classificacoes c ON e.id_classificacao = c.id
+        ORDER BY e.nome ASC
     """
     return GerenciadorBanco.executar_query(query)
 
-def obter_listas_filtro():
-    df_clas = GerenciadorBanco.executar_query("SELECT DISTINCT nome FROM classificacoes ORDER BY nome")
-    df_cat = GerenciadorBanco.executar_query("SELECT DISTINCT nome FROM categorias ORDER BY nome")
-    
-    lista_clas = df_clas['nome'].tolist() if not df_clas.empty else []
-    lista_cat = df_cat['nome'].tolist() if not df_cat.empty else []
-    return lista_clas, lista_cat
+def obter_classificacoes():
+    return GerenciadorBanco.executar_query("SELECT id, nome FROM classificacoes ORDER BY nome ASC")
 
-def callback_inclusao():
-    nome = st.session_state.get(f"inc_nome_ev_{st.session_state.form_reset}", "")
-    classificacao_str = st.session_state.get(f"inc_clas_ev_{st.session_state.form_reset}", "")
-    
-    if nome.strip() and classificacao_str:
-        id_classificacao = int(classificacao_str.split(" - ")[0])
-        GerenciadorBanco.executar_query(
-            "INSERT INTO eventos (nome, id_classificacao) VALUES (%s, %s)", 
-            (nome, id_classificacao), is_select=False
-        )
-        st.session_state.msg_sucesso_inc = True
-        st.session_state.form_cleared = True
-        st.session_state.form_reset += 1
-    else:
-        st.session_state.msg_erro = "Nome do evento e classificação são obrigatórios."
+def obter_categorias():
+    return GerenciadorBanco.executar_query("SELECT id, nome FROM categorias ORDER BY nome ASC")
 
-def callback_alteracao(id_evento):
-    nome = st.session_state.get(f"alt_nome_ev_{st.session_state.form_reset}", "")
-    classificacao_str = st.session_state.get(f"alt_clas_ev_{st.session_state.form_reset}", "")
+def callback_salvar_evento(acao="inserir", id_evento=None):
+    fr_id = st.session_state.get("form_reset")
+    nome_ev = st.session_state.get(f"ev_nome_{fr_id}", "").strip()
+    modo_class = st.session_state.get(f"ev_modo_cls_{fr_id}", "selecionar classificação")
     
-    if nome.strip() and classificacao_str:
-        id_classificacao = int(classificacao_str.split(" - ")[0])
-        GerenciadorBanco.executar_query(
-            "UPDATE eventos SET nome = %s, id_classificacao = %s WHERE id = %s", 
-            (nome, id_classificacao, id_evento), is_select=False
-        )
-        st.session_state.msg_sucesso = True
-        st.session_state.form_cleared = True
-        st.session_state.form_reset += 1
-    else:
-        st.session_state.msg_erro = "Nome do evento e classificação são obrigatórios."
+    if not nome_ev:
+        st.session_state.msg_erro = "O nome do evento é obrigatório."
+        return
 
-def callback_exclusao(id_evento):
-    df_lanc = GerenciadorBanco.executar_query("SELECT count(id) as total FROM lancamentos WHERE id_evento = %s", (int(id_evento),))
-    if df_lanc.iloc[0]['total'] > 0:
-        st.session_state.msg_erro = "Ação bloqueada: Existem lançamentos financeiros vinculados a este evento."
-        st.session_state.form_cleared = True
+    id_cls_final = None
+    if modo_class == "cadastrar nova":
+        nome_nova_cls = st.session_state.get(f"ev_nova_cls_nome_{fr_id}", "").strip()
+        cat_mestre = st.session_state.get(f"ev_nova_cls_cat_{fr_id}")
+        if not nome_nova_cls:
+            st.session_state.msg_erro = "Preencha o nome da nova classificação."
+            return
+        df_cat = GerenciadorBanco.executar_query("SELECT id FROM categorias WHERE nome = %s LIMIT 1", (cat_mestre,))
+        id_cat_id = int(df_cat.iloc[0]['id'])
+        GerenciadorBanco.executar_query("INSERT INTO classificacoes (nome, id_categoria, icone) VALUES (%s, %s, 'Sem ícone')", (nome_nova_cls, id_cat_id), is_select=False)
+        df_cls = GerenciadorBanco.executar_query("SELECT id FROM classificacoes WHERE nome = %s ORDER BY id DESC LIMIT 1", (nome_nova_cls,))
+        id_cls_final = int(df_cls.iloc[0]['id'])
     else:
-        GerenciadorBanco.executar_query("DELETE FROM eventos WHERE id = %s", (int(id_evento),), is_select=False)
-        st.session_state.msg_sucesso = True
-        st.session_state.form_cleared = True
-        st.session_state.form_reset += 1
+        cls_sel = st.session_state.get(f"ev_cls_sel_{fr_id}")
+        df_cls = GerenciadorBanco.executar_query("SELECT id FROM classificacoes WHERE nome = %s LIMIT 1", (cls_sel,))
+        if df_cls.empty:
+            st.session_state.msg_erro = "Selecione uma classificação válida."
+            return
+        id_cls_final = int(df_cls.iloc[0]['id'])
+
+    if acao == "editar" and id_evento:
+        GerenciadorBanco.executar_query("UPDATE eventos SET nome = %s, id_classificacao = %s WHERE id = %s", (nome_ev, id_cls_final, id_evento), is_select=False)
+    else:
+        GerenciadorBanco.executar_query("INSERT INTO eventos (nome, id_classificacao) VALUES (%s, %s)", (nome_ev, id_cls_final), is_select=False)
+
+    st.session_state.msg_sucesso = True
+    st.session_state.modal_ev_ativa = None
+    st.session_state.form_reset += 1
+
+def callback_exclusao_direta(id_evento):
+    GerenciadorBanco.executar_query("DELETE FROM eventos WHERE id = %s", (id_evento,), is_select=False)
+    st.session_state.msg_sucesso = True
+    st.session_state.form_reset += 1
 
 # ==========================================
-# MODAIS DE INTERAÇÃO
+# 3. MODAIS
 # ==========================================
-@st.dialog(":material/add_circle: Novo evento")
-def modal_inclusao(nome_base="", id_classificacao_base=None, nome_classificacao_base="", tipo_base=""):
-    df_classificacoes = carregar_classificacoes()
+@st.dialog(":material/event: Evento financeiro", width="small")
+def modal_formulario(acao="inserir", id_evento=None, dados_pre=None):
+    fr_id = st.session_state.get("form_reset", 0)
+    df_cls = obter_classificacoes(); op_cls = df_cls['nome'].tolist() if not df_cls.empty else []
+    df_cats = obter_categorias(); op_cats = df_cats['nome'].tolist() if not df_cats.empty else []
+    v_nome = dados_pre['nome'] if dados_pre is not None else ""
+    v_cls_idx = 0
+    if dados_pre is not None and dados_pre['classificacao_nome'] in op_cls: v_cls_idx = op_cls.index(dados_pre['classificacao_nome'])
+
+    st.text_input("Nome do evento financeiro:", value=v_nome, key=f"ev_nome_{fr_id}")
+    st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
+    st.radio("Origem da classificação:", ["selecionar classificação", "cadastrar nova"], horizontal=True, label_visibility="collapsed", key=f"ev_modo_cls_{fr_id}")
     
-    opcoes_classificacoes = []
-    idx_selecionado = 0
-    if not df_classificacoes.empty:
-        opcoes_classificacoes = [f"{row['id']} - {row['nome']} ({row['tipo']})" for _, row in df_classificacoes.iterrows()]
-        if id_classificacao_base:
-            str_busca = f"{id_classificacao_base} - {nome_classificacao_base} ({tipo_base})"
-            idx_atual = opcoes_classificacoes.index(str_busca) if str_busca in opcoes_classificacoes else 0
-            idx_selecionado = 0 if st.session_state.form_cleared else idx_atual
-            
-    if nome_base and not st.session_state.form_cleared:
-        st.info("Modo de Replicação: Altere o nome para salvar como um novo evento.")
-        
-    val_nome = "" if st.session_state.form_cleared else nome_base
-    
-    st.text_input("Nome do evento:", value=val_nome, key=f"inc_nome_ev_{st.session_state.form_reset}")
-    if opcoes_classificacoes:
-        st.selectbox("Classificação vinculada:", opcoes_classificacoes, index=idx_selecionado, key=f"inc_clas_ev_{st.session_state.form_reset}")
+    if st.session_state[f"ev_modo_cls_{fr_id}"] == "selecionar classificação":
+        st.selectbox("Classificação vinculada:", op_cls, index=v_cls_idx, key=f"ev_cls_sel_{fr_id}")
     else:
-        st.warning("Cadastre ao menos uma classificação antes de criar um evento.")
-        
+        st.text_input("Nome da nova classificação:", key=f"ev_nova_cls_nome_{fr_id}")
+        st.selectbox("Vincule a uma categoria mestre:", op_cats, key=f"ev_nova_cls_cat_{fr_id}")
+
     st.markdown("<br>", unsafe_allow_html=True)
-    c1, c2, c3 = st.columns(3)
-    with c2:
-        if st.button("Fechar", type="secondary", use_container_width=True): st.rerun()
-    with c3:
-        st.button("Salvar", type="primary", use_container_width=True, on_click=callback_inclusao, disabled=len(opcoes_classificacoes)==0)
+    b_sal, b_fec = st.columns(2)
+    with b_sal:
+        st.button("Salvar", type="primary", use_container_width=True, on_click=callback_salvar_evento, args=(acao, id_evento))
+    with b_fec:
+        if st.button("Fechar", type="secondary", use_container_width=True):
+            st.session_state.modal_ev_ativa = None; st.rerun()
 
-    if st.session_state.get("msg_sucesso_inc"):
-        st.toast("Operação realizada com sucesso!", icon="✅")
-        st.session_state.msg_sucesso_inc = False
-        st.session_state.form_cleared = False
+    if st.session_state.get("msg_sucesso"):
+        st.toast("Operação realizada com sucesso!", icon="✅"); time.sleep(2.0)
+        st.session_state.msg_sucesso = False; st.rerun()
     elif st.session_state.get("msg_erro"):
-        st.toast(st.session_state.msg_erro, icon="❌")
-        st.session_state.msg_erro = ""
+        st.toast(st.session_state.msg_erro, icon="❌"); st.session_state.msg_erro = ""
 
-@st.dialog(":material/edit: Editar evento")
-def modal_alteracao(id_evento, nome_atual, id_classificacao_atual, nome_classificacao_atual, tipo_atual):
-    UtilitariosVisuais.exibir_mensagens()
-    df_classificacoes = carregar_classificacoes()
+@st.dialog(":material/delete: Excluir evento", width="small")
+def modal_exclusao(id_evento, nome_evento):
+    vinc = GerenciadorBanco.executar_query("SELECT id FROM lancamentos WHERE id_evento = %s LIMIT 1", (id_evento,))
     
-    opcoes_classificacoes = [f"{row['id']} - {row['nome']} ({row['tipo']})" for _, row in df_classificacoes.iterrows()]
-    
-    str_busca = f"{id_classificacao_atual} - {nome_classificacao_atual} ({tipo_atual})"
-    idx_atual = opcoes_classificacoes.index(str_busca) if str_busca in opcoes_classificacoes else 0
-    
-    val_nome = "" if st.session_state.form_cleared else nome_atual
-    idx_selecionado = 0 if st.session_state.form_cleared else idx_atual
-    
-    st.text_input("Nome do evento:", value=val_nome, key=f"alt_nome_ev_{st.session_state.form_reset}")
-    st.selectbox("Classificação vinculada:", opcoes_classificacoes, index=idx_selecionado, key=f"alt_clas_ev_{st.session_state.form_reset}")
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    c1, c2, c3 = st.columns(3)
-    with c2:
-        if st.button("Fechar", type="secondary", use_container_width=True): st.rerun()
-    with c3:
-        st.button("Salvar", type="primary", use_container_width=True, on_click=callback_alteracao, args=(id_evento,))
-
-@st.dialog(":material/delete: Excluir evento")
-def modal_exclusao(id_evento, nome_atual):
-    UtilitariosVisuais.exibir_mensagens()
-    
-    if not st.session_state.form_cleared:
-        html_confirmacao = f"""
-        <div style="border-left: 5px solid #e76f51; background-color: #f8f9fa; padding: 20px; border-radius: 4px; margin-bottom: 20px; border: 1px solid #e9ecef;">
-            <div style="color: #1a2a40; font-size: 17px; line-height: 1.6;">
-                Tem a certeza que deseja excluir o evento <b>{nome_atual}</b>?<br>
-                <span style="color: #e76f51;"><i>Esta ação é irreversível.</i></span>
-            </div>
-        </div>
-        """
-        st.markdown(html_confirmacao, unsafe_allow_html=True)
-        c1, c2, c3 = st.columns(3)
-        with c2:
-            if st.button("Fechar", type="secondary", use_container_width=True): st.rerun()
-        with c3:
-            st.button("Confirmar", type="primary", use_container_width=True, on_click=callback_exclusao, args=(id_evento,))
+    if not vinc.empty:
+        st.warning(f"O evento **{nome_evento}** não pode ser excluído porque possui lançamentos financeiros vinculados a ele.")
+        if st.button("Fechar", type="secondary", use_container_width=True):
+            st.rerun()
     else:
-        c1, c2, c3 = st.columns(3)
-        with c2:
-            if st.button("Fechar", type="secondary", use_container_width=True): st.rerun()
+        st.error(f"Deseja realmente excluir o evento: **{nome_evento}**?")
+        b_conf, b_canc = st.columns(2)
+        with b_conf:
+            st.button("Confirmar", type="primary", use_container_width=True, on_click=callback_exclusao_direta, args=(id_evento,))
+        with b_canc:
+            if st.button("Fechar", type="secondary", use_container_width=True):
+                st.rerun()
 
 # ==========================================
-# INTERFACE PRINCIPAL
+# 4. INTERFACE PRINCIPAL
 # ==========================================
-if 'f_ev_pesq' not in st.session_state: st.session_state.f_ev_pesq = ""
-if 'f_ev_clas' not in st.session_state or isinstance(st.session_state.f_ev_clas, str): st.session_state.f_ev_clas = []
-if 'f_ev_cat' not in st.session_state or isinstance(st.session_state.f_ev_cat, str): st.session_state.f_ev_cat = []
-if 'show_f_ev' not in st.session_state: st.session_state.show_f_ev = False
-
-c_titulo, c_filtrar, c_inserir, c_margem = st.columns([5, 1.5, 1.5, 3])
-with c_titulo: st.markdown("<h3 class='titulo-pagina'><span class='material-symbols-rounded'>sell</span> Cadastro de Eventos</h3>", unsafe_allow_html=True)
-with c_filtrar:
+c_tit, c_fil, c_ins, c_mar = st.columns([5, 1.5, 1.5, 3])
+with c_tit: st.markdown("<h3 class='titulo-pagina'><span class='material-symbols-rounded'>event</span> Cadastro de eventos</h3>", unsafe_allow_html=True)
+with c_fil:
     if st.button("Filtrar", type="tertiary", icon=":material/search:", use_container_width=True):
-        st.session_state.show_f_ev = not st.session_state.show_f_ev; st.rerun()
-with c_inserir:
-    if st.button("Inserir", type="primary", icon=":material/add:", use_container_width=True): 
-        UtilitariosVisuais.preparar_modal()
-        modal_inclusao()
+        st.session_state.show_filtros_ev = not st.session_state.show_filtros_ev; st.rerun()
+with c_ins:
+    if st.button("Inserir", type="primary", icon=":material/add:", use_container_width=True):
+        st.session_state.modal_ev_ativa, st.session_state.modal_ev_id, st.session_state.modal_ev_dados = "inserir", None, None; st.rerun()
 
-if st.session_state.show_f_ev:
+if st.session_state.show_filtros_ev:
     with st.container(border=True):
-        lista_clas, lista_cat = obter_listas_filtro()
-        
-        f1, f2, f3, f4 = st.columns([2.5, 2, 2, 1.5], vertical_alignment="bottom")
-        v_pesq = f1.text_input("Pesquisar nome do evento:", value=st.session_state.f_ev_pesq)
-        v_clas = f2.multiselect("Classificação vinculada:", options=lista_clas, default=st.session_state.f_ev_clas, placeholder="Todas as classificações")
-        v_cat = f3.multiselect("Categoria:", options=lista_cat, default=st.session_state.f_ev_cat, placeholder="Todas as categorias")
-        
-        with f4:
-            auto_refresh = st.checkbox("Refresh automático", value=st.session_state.get('f_ev_auto', False), key='f_ev_auto')
-            if auto_refresh:
-                st.session_state.f_ev_pesq = v_pesq
-                st.session_state.f_ev_clas = v_clas
-                st.session_state.f_ev_cat = v_cat
-                st.button("Pesquisar", type="tertiary", icon=":material/search:", use_container_width=True, disabled=True)
-            else:
-                if st.button("Pesquisar", type="tertiary", icon=":material/search:", use_container_width=True):
-                    st.session_state.f_ev_pesq = v_pesq
-                    st.session_state.f_ev_clas = v_clas
-                    st.session_state.f_ev_cat = v_cat
-                    st.rerun()
-            
-st.markdown("<br>", unsafe_allow_html=True)
+        f_col1, f_col2 = st.columns([8.5, 1.5], vertical_alignment="bottom")
+        busca = f_col1.text_input("Pesquisar por evento ou classificação:", value=st.session_state.f_ev_busca)
+        if f_col2.button("Pesquisar", type="tertiary", use_container_width=True):
+            st.session_state.f_ev_busca = busca; st.rerun()
 
-df = carregar_dados(st.session_state.f_ev_pesq)
+df = carregar_dados()
+if not df.empty and st.session_state.f_ev_busca:
+    df = df[df['nome'].str.contains(st.session_state.f_ev_busca, case=False) | df['classificacao_nome'].str.contains(st.session_state.f_ev_busca, case=False)]
+
+st.markdown('''<div class="cabecalho-grid"><div style="display: flex;"><div style="flex: 3.5;">Evento financeiro (Credor/Devedor)</div><div style="flex: 2.5;">Classificação vinculada</div><div style="flex: 1.0; text-align: center;">Ações</div></div></div>''', unsafe_allow_html=True)
 
 if not df.empty:
-    if st.session_state.f_ev_clas:
-        df = df[df['classificacao'].isin(st.session_state.f_ev_clas)]
-    if st.session_state.f_ev_cat:
-        df = df[df['categoria'].isin(st.session_state.f_ev_cat)]
+    for _, row in df.iterrows():
+        c = st.columns([3.5, 2.5, 0.5, 0.5], vertical_alignment="center")
+        c[0].markdown(f"<span style='font-weight: 600;'>{row['nome']}</span>", unsafe_allow_html=True)
+        c[1].markdown(row['classificacao_nome'])
+        if c[2].button(" ", icon=":material/edit:", key=f"ed_ev_{row['id']}", use_container_width=True):
+            st.session_state.modal_ev_ativa, st.session_state.modal_ev_id, st.session_state.modal_ev_dados = "editar", row['id'], row; st.rerun()
+        if c[3].button(" ", icon=":material/delete:", key=f"del_ev_{row['id']}", use_container_width=True):
+            modal_exclusao(row['id'], row['nome'])
+        st.markdown("<hr style='margin: 5px 0; border: 0; border-top: 1px solid #eee;'>", unsafe_allow_html=True)
+else: st.info("Nenhum evento financeiro encontrado.")
 
-html_cabecalho = '''
-<div class="cabecalho-grid">
-    <div style="display: flex;">
-        <div style="flex: 3.5;">Nome do evento</div>
-        <div style="flex: 2.5;">Classificação vinculada</div>
-        <div style="flex: 2; text-align: center;">Categoria</div>
-        <div style="flex: 2.5; text-align: center;">Ações</div>
-    </div>
-</div>
-'''
-st.markdown(html_cabecalho, unsafe_allow_html=True)
-
-if df.empty:
-    st.info("Nenhum evento encontrado para os filtros selecionados.")
-else:
-    with st.container():
-        st.markdown("<div class='btn-acao-grid'>", unsafe_allow_html=True)
-        for _, row in df.iterrows():
-            id_ev, nome, id_classificacao, classificacao, categoria, tipo = row['id'], row['nome'], row['id_classificacao'], row['classificacao'], row['categoria'], row['tipo']
-            
-            c1, c2, c3, c4, c5, c6 = st.columns([3.5, 2.5, 2, 0.75, 0.75, 0.75], vertical_alignment="center")
-            c1.markdown(f"<span style='font-weight: 600; color: #1a2a40; font-size: 15px; padding-left: 10px;'>{nome}</span>", unsafe_allow_html=True)
-            c2.markdown(f"<span style='color: #495057; font-size: 14px;'>{classificacao}</span>", unsafe_allow_html=True)
-            
-            badge = "badge-receita" if tipo == "Receita" else "badge-despesa"
-            c3.markdown(f"<div style='text-align: center;'><span class='{badge}'>{categoria}</span></div>", unsafe_allow_html=True)
-            
-            if c4.button(" ", icon=":material/content_copy:", key=f"re_{id_ev}", help="Replicar", use_container_width=True): 
-                UtilitariosVisuais.preparar_modal(); modal_inclusao(nome, int(id_classificacao), classificacao, tipo)
-            if c5.button(" ", icon=":material/edit:", key=f"ee_{id_ev}", help="Editar", use_container_width=True): 
-                UtilitariosVisuais.preparar_modal(); modal_alteracao(int(id_ev), nome, int(id_classificacao), classificacao, tipo)
-            if c6.button(" ", icon=":material/delete:", key=f"xe_{id_ev}", help="Excluir", use_container_width=True): 
-                UtilitariosVisuais.preparar_modal(); modal_exclusao(int(id_ev), nome)
-            st.markdown("<hr style='margin: 8px 0; border: 0; border-top: 1px solid #e9ecef;'>", unsafe_allow_html=True)
-        st.markdown("</div>", unsafe_allow_html=True)
+if st.session_state.modal_ev_ativa:
+    modal_formulario(st.session_state.modal_ev_ativa, st.session_state.modal_ev_id, st.session_state.modal_ev_dados)

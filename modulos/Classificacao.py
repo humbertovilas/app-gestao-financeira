@@ -33,7 +33,7 @@ def obter_lista_cat_filtro():
 
 def callback_inclusao(icone_base):
     nome = st.session_state.get(f"inc_nome_cls_{st.session_state.form_reset}", "")
-    categoria_str = st.session_state.get(f"inc_cat_cls_{st.session_state.form_reset}", "")
+    modo_cat = st.session_state.get(f"cls_modo_cat_{st.session_state.form_reset}", "Selecionar categoria")
     upload_arquivo = st.session_state.get(f"up_ico_cls_{st.session_state.form_reset}")
     remover_icone = st.session_state.get(f"rm_ico_inc_{st.session_state.form_reset}", False)
     
@@ -42,18 +42,35 @@ def callback_inclusao(icone_base):
     else:
         icone_final = UtilitariosVisuais.salvar_icone_upload(upload_arquivo) if upload_arquivo is not None else icone_base
     
-    if nome.strip() and categoria_str:
-        id_categoria = int(categoria_str.split(" - ")[0])
-        GerenciadorBanco.executar_query("INSERT INTO classificacoes (nome, id_categoria, icone) VALUES (%s, %s, %s)", (nome, id_categoria, icone_final), is_select=False)
-        st.session_state.msg_sucesso_inc = True
-        st.session_state.form_cleared = True
-        st.session_state.form_reset += 1
+    if not nome.strip():
+        st.session_state.msg_erro = "O nome da classificação é obrigatório."
+        return
+
+    id_categoria = None
+    if modo_cat == "Cadastrar nova":
+        nome_nova_cat = st.session_state.get(f"cls_nova_cat_nome_{st.session_state.form_reset}", "").strip()
+        tipo_nova_cat = st.session_state.get(f"cls_nova_cat_tipo_{st.session_state.form_reset}", "Despesa")
+        if not nome_nova_cat:
+            st.session_state.msg_erro = "Preencha o nome da nova categoria."
+            return
+        GerenciadorBanco.executar_query("INSERT INTO categorias (nome, tipo) VALUES (%s, %s)", (nome_nova_cat, tipo_nova_cat), is_select=False)
+        df_cat = GerenciadorBanco.executar_query("SELECT id FROM categorias WHERE nome = %s ORDER BY id DESC LIMIT 1", (nome_nova_cat,))
+        id_categoria = int(df_cat.iloc[0]['id'])
     else:
-        st.session_state.msg_erro = "Nome e categoria são obrigatórios."
+        categoria_str = st.session_state.get(f"inc_cat_cls_{st.session_state.form_reset}", "")
+        if not categoria_str:
+            st.session_state.msg_erro = "Selecione uma categoria válida."
+            return
+        id_categoria = int(categoria_str.split(" - ")[0])
+
+    GerenciadorBanco.executar_query("INSERT INTO classificacoes (nome, id_categoria, icone) VALUES (%s, %s, %s)", (nome, id_categoria, icone_final), is_select=False)
+    st.session_state.msg_sucesso_inc = True
+    st.session_state.form_cleared = True
+    st.session_state.form_reset += 1
 
 def callback_alteracao(id_cls, icone_atual):
     nome = st.session_state.get(f"alt_nome_cls_{st.session_state.form_reset}", "")
-    categoria_str = st.session_state.get(f"alt_cat_cls_{st.session_state.form_reset}", "")
+    modo_cat = st.session_state.get(f"cls_modo_cat_{st.session_state.form_reset}", "Selecionar categoria")
     upload_arquivo = st.session_state.get(f"up_ico_cls_{st.session_state.form_reset}")
     remover_icone = st.session_state.get(f"rm_ico_alt_{st.session_state.form_reset}", False)
     
@@ -62,30 +79,42 @@ def callback_alteracao(id_cls, icone_atual):
     else:
         icone_final = UtilitariosVisuais.salvar_icone_upload(upload_arquivo) if upload_arquivo is not None else icone_atual
     
-    if nome.strip() and categoria_str:
-        id_categoria = int(categoria_str.split(" - ")[0])
-        GerenciadorBanco.executar_query("UPDATE classificacoes SET nome = %s, id_categoria = %s, icone = %s WHERE id = %s", (nome, id_categoria, icone_final, id_cls), is_select=False)
-        st.session_state.msg_sucesso = True
-        st.session_state.form_cleared = True
-        st.session_state.form_reset += 1
+    if not nome.strip():
+        st.session_state.msg_erro = "O nome da classificação é obrigatório."
+        return
+
+    id_categoria = None
+    if modo_cat == "Cadastrar nova":
+        nome_nova_cat = st.session_state.get(f"cls_nova_cat_nome_{st.session_state.form_reset}", "").strip()
+        tipo_nova_cat = st.session_state.get(f"cls_nova_cat_tipo_{st.session_state.form_reset}", "Despesa")
+        if not nome_nova_cat:
+            st.session_state.msg_erro = "Preencha o nome da nova categoria."
+            return
+        GerenciadorBanco.executar_query("INSERT INTO categorias (nome, tipo) VALUES (%s, %s)", (nome_nova_cat, tipo_nova_cat), is_select=False)
+        df_cat = GerenciadorBanco.executar_query("SELECT id FROM categorias WHERE nome = %s ORDER BY id DESC LIMIT 1", (nome_nova_cat,))
+        id_categoria = int(df_cat.iloc[0]['id'])
     else:
-        st.session_state.msg_erro = "Nome e categoria são obrigatórios."
+        categoria_str = st.session_state.get(f"alt_cat_cls_{st.session_state.form_reset}", "")
+        if not categoria_str:
+            st.session_state.msg_erro = "Selecione uma categoria válida."
+            return
+        id_categoria = int(categoria_str.split(" - ")[0])
+
+    GerenciadorBanco.executar_query("UPDATE classificacoes SET nome = %s, id_categoria = %s, icone = %s WHERE id = %s", (nome, id_categoria, icone_final, id_cls), is_select=False)
+    st.session_state.msg_sucesso = True
+    st.session_state.form_cleared = True
+    st.session_state.form_reset += 1
 
 def callback_exclusao(id_cls):
-    df_ev = GerenciadorBanco.executar_query("SELECT count(id) as total FROM eventos WHERE id_classificacao = %s", (int(id_cls),))
-    if df_ev.iloc[0]['total'] > 0:
-        st.session_state.msg_erro = "Ação bloqueada: Existem eventos vinculados a esta classificação."
-        st.session_state.form_cleared = True
-    else:
-        GerenciadorBanco.executar_query("DELETE FROM classificacoes WHERE id = %s", (int(id_cls),), is_select=False)
-        st.session_state.msg_sucesso = True
-        st.session_state.form_cleared = True
-        st.session_state.form_reset += 1
+    GerenciadorBanco.executar_query("DELETE FROM classificacoes WHERE id = %s", (int(id_cls),), is_select=False)
+    st.session_state.msg_sucesso = True
+    st.session_state.form_cleared = True
+    st.session_state.form_reset += 1
 
 # ==========================================
-# MODAIS DE INTERAÇÃO (PRÉVIA VISUAL REATIVA)
+# MODAIS DE INTERAÇÃO (RESTAURADA E BLINDADA)
 # ==========================================
-@st.dialog(":material/add_circle: Nova classificação")
+@st.dialog(":material/add_circle: Nova classificação", width="small")
 def modal_inclusao(nome_base="", id_cat_base=None, nome_cat_base="", tipo_cat_base="", icone_base="Sem ícone"):
     df_categorias = obter_categorias()
     opcoes_cat = []
@@ -103,18 +132,25 @@ def modal_inclusao(nome_base="", id_cat_base=None, nome_cat_base="", tipo_cat_ba
     val_nome = "" if st.session_state.form_cleared else nome_base
     st.text_input("Nome da classificação:", value=val_nome, key=f"inc_nome_cls_{st.session_state.form_reset}")
     
-    if opcoes_cat:
-        st.selectbox("Categoria mestre:", opcoes_cat, index=idx_selecionado, key=f"inc_cat_cls_{st.session_state.form_reset}")
+    st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
+    st.radio("Origem da categoria:", ["Selecionar categoria", "Cadastrar nova"], horizontal=True, label_visibility="collapsed", key=f"cls_modo_cat_{st.session_state.form_reset}")
+    
+    if st.session_state.get(f"cls_modo_cat_{st.session_state.form_reset}", "Selecionar categoria") == "Selecionar categoria":
+        if opcoes_cat:
+            st.selectbox("Categoria mestre:", opcoes_cat, index=idx_selecionado, key=f"inc_cat_cls_{st.session_state.form_reset}")
+        else:
+            st.warning("Cadastre uma categoria primeiro.")
     else:
-        st.warning("Cadastre uma categoria primeiro.")
+        c_nc1, c_nc2 = st.columns(2)
+        c_nc1.text_input("Nome da nova categoria:", key=f"cls_nova_cat_nome_{st.session_state.form_reset}")
+        c_nc2.selectbox("Tipo da categoria:", ["Receita", "Despesa"], key=f"cls_nova_cat_tipo_{st.session_state.form_reset}")
         
     st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
     
+    # BROWSER DE IMAGENS RESTAURADO
     upload_arquivo = st.file_uploader("Selecionar novo ícone (Procurar no computador):", type=["png"], key=f"up_ico_cls_{st.session_state.form_reset}")
-    
     icone_atual_seguro = icone_base if pd.notna(icone_base) else "Sem ícone"
     
-    # Inteligência de Pré-visualização com Opção de Remoção
     if upload_arquivo is not None:
         b64_uploaded = base64.b64encode(upload_arquivo.getvalue()).decode()
         st.markdown(f"<div style='margin-top: 5px; text-align: center;'><span style='font-size: 13px; font-weight: 600; color: #20c997;'>Pré-visualização do envio:</span><br><img src='data:image/png;base64,{b64_uploaded}' style='width: 64px; height: 64px; mix-blend-mode: multiply; border: 2px solid #20c997; padding: 4px; border-radius: 8px; background-color: #f8f9fa; margin-top: 5px;' /></div>", unsafe_allow_html=True)
@@ -129,21 +165,22 @@ def modal_inclusao(nome_base="", id_cat_base=None, nome_cat_base="", tipo_cat_ba
                 st.checkbox("Remover ícone", key=f"rm_ico_inc_{st.session_state.form_reset}")
         
     st.markdown("<br>", unsafe_allow_html=True)
-    b1, b2, b3 = st.columns(3)
-    with b2:
+    b_sal, b_fec = st.columns(2)
+    with b_sal:
+        btn_disabled = (len(opcoes_cat) == 0 and st.session_state.get(f"cls_modo_cat_{st.session_state.form_reset}", "Selecionar categoria") == "Selecionar categoria")
+        st.button("Salvar", type="primary", use_container_width=True, on_click=callback_inclusao, args=(icone_atual_seguro,), disabled=btn_disabled)
+    with b_fec:
         if st.button("Fechar", type="secondary", use_container_width=True): st.rerun()
-    with b3:
-        st.button("Salvar", type="primary", use_container_width=True, on_click=callback_inclusao, args=(icone_atual_seguro,), disabled=len(opcoes_cat)==0)
 
     if st.session_state.get("msg_sucesso_inc"):
-        st.toast("Operação realizada com sucesso!", icon="✅")
+        st.toast("Operação realizada com sucesso!", icon="✅"); time.sleep(2.0)
         st.session_state.msg_sucesso_inc = False
         st.session_state.form_cleared = False
+        st.rerun()
     elif st.session_state.get("msg_erro"):
-        st.toast(st.session_state.msg_erro, icon="❌")
-        st.session_state.msg_erro = ""
+        st.toast(st.session_state.msg_erro, icon="❌"); st.session_state.msg_erro = ""
 
-@st.dialog(":material/edit: Editar classificação")
+@st.dialog(":material/edit: Editar classificação", width="small")
 def modal_alteracao(id_cls, nome_atual, id_cat_atual, nome_cat_atual, tipo_cat_atual, icone_atual):
     UtilitariosVisuais.exibir_mensagens()
     df_categorias = obter_categorias()
@@ -155,15 +192,23 @@ def modal_alteracao(id_cls, nome_atual, id_cat_atual, nome_cat_atual, tipo_cat_a
     idx_selecionado = 0 if st.session_state.form_cleared else idx_atual
     
     st.text_input("Nome da classificação:", value=val_nome, key=f"alt_nome_cls_{st.session_state.form_reset}")
-    st.selectbox("Categoria mestre:", opcoes_cat, index=idx_selecionado, key=f"alt_cat_cls_{st.session_state.form_reset}")
+    
+    st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
+    st.radio("Origem da categoria:", ["Selecionar categoria", "Cadastrar nova"], horizontal=True, label_visibility="collapsed", key=f"cls_modo_cat_{st.session_state.form_reset}")
+    
+    if st.session_state.get(f"cls_modo_cat_{st.session_state.form_reset}", "Selecionar categoria") == "Selecionar categoria":
+        st.selectbox("Categoria mestre:", opcoes_cat, index=idx_selecionado, key=f"alt_cat_cls_{st.session_state.form_reset}")
+    else:
+        c_nc1, c_nc2 = st.columns(2)
+        c_nc1.text_input("Nome da nova categoria:", key=f"cls_nova_cat_nome_{st.session_state.form_reset}")
+        c_nc2.selectbox("Tipo da categoria:", ["Receita", "Despesa"], key=f"cls_nova_cat_tipo_{st.session_state.form_reset}")
     
     st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
     
+    # BROWSER DE IMAGENS RESTAURADO
     upload_arquivo = st.file_uploader("Selecionar novo ícone (Procurar no computador):", type=["png"], key=f"up_ico_cls_{st.session_state.form_reset}")
-    
     icone_atual_seguro = icone_atual if pd.notna(icone_atual) else "Sem ícone"
     
-    # Inteligência de Pré-visualização com Opção de Remoção
     if upload_arquivo is not None:
         b64_uploaded = base64.b64encode(upload_arquivo.getvalue()).decode()
         st.markdown(f"<div style='margin-top: 5px; text-align: center;'><span style='font-size: 13px; font-weight: 600; color: #20c997;'>Novo ícone selecionado:</span><br><img src='data:image/png;base64,{b64_uploaded}' style='width: 64px; height: 64px; mix-blend-mode: multiply; border: 2px solid #20c997; padding: 4px; border-radius: 8px; background-color: #f8f9fa; margin-top: 5px;' /></div>", unsafe_allow_html=True)
@@ -178,33 +223,43 @@ def modal_alteracao(id_cls, nome_atual, id_cat_atual, nome_cat_atual, tipo_cat_a
                 st.checkbox("Remover ícone", key=f"rm_ico_alt_{st.session_state.form_reset}")
             
     st.markdown("<br>", unsafe_allow_html=True)
-    b1, b2, b3 = st.columns(3)
-    with b2:
-        if st.button("Fechar", type="secondary", use_container_width=True): st.rerun()
-    with b3:
+    b_sal, b_fec = st.columns(2)
+    with b_sal:
         st.button("Salvar", type="primary", use_container_width=True, on_click=callback_alteracao, args=(id_cls, icone_atual_seguro))
+    with b_fec:
+        if st.button("Fechar", type="secondary", use_container_width=True): st.rerun()
 
-@st.dialog(":material/delete: Excluir classificação")
+    if st.session_state.get("msg_sucesso"):
+        st.toast("Operação realizada com sucesso!", icon="✅"); time.sleep(2.0)
+        st.session_state.msg_sucesso = False; st.rerun()
+    elif st.session_state.get("msg_erro"):
+        st.toast(st.session_state.msg_erro, icon="❌"); st.session_state.msg_erro = ""
+
+@st.dialog(":material/delete: Excluir classificação", width="small")
 def modal_exclusao(id_cls, nome_atual):
     UtilitariosVisuais.exibir_mensagens()
-    if not st.session_state.form_cleared:
-        html_confirmacao = f"""
-        <div style="border-left: 5px solid #e76f51; background-color: #f8f9fa; padding: 20px; border-radius: 4px; margin-bottom: 20px; border: 1px solid #e9ecef;">
-            <div style="color: #1a2a40; font-size: 17px; line-height: 1.6;">
-                Tem a certeza que deseja excluir a classificação <b>{nome_atual}</b>?<br>
-                <span style="color: #e76f51;"><i>Esta ação é irreversível.</i></span>
-            </div>
-        </div>
-        """
-        st.markdown(html_confirmacao, unsafe_allow_html=True)
-        c1, c2, c3 = st.columns(3)
-        with c2:
-            if st.button("Fechar", type="secondary", use_container_width=True): st.rerun()
-        with c3:
-            st.button("Confirmar", type="primary", use_container_width=True, on_click=callback_exclusao, args=(id_cls,))
+    # PROTEÇÃO CONTRA EXCLUSÃO DE CLASSIFICAÇÃO COM EVENTOS
+    df_ev = GerenciadorBanco.executar_query("SELECT count(id) as total FROM eventos WHERE id_classificacao = %s", (int(id_cls),))
+    if df_ev.iloc[0]['total'] > 0:
+        st.warning(f"A classificação **{nome_atual}** não pode ser excluída porque possui eventos vinculados a ela.")
+        if st.button("Fechar", type="secondary", use_container_width=True): st.rerun()
     else:
-        c1, c2, c3 = st.columns(3)
-        with c2:
+        if not st.session_state.form_cleared:
+            html_confirmacao = f"""
+            <div style="border-left: 5px solid #e76f51; background-color: #f8f9fa; padding: 20px; border-radius: 4px; margin-bottom: 20px; border: 1px solid #e9ecef;">
+                <div style="color: #1a2a40; font-size: 17px; line-height: 1.6;">
+                    Tem a certeza que deseja excluir a classificação <b>{nome_atual}</b>?<br>
+                    <span style="color: #e76f51;"><i>Esta ação é irreversível.</i></span>
+                </div>
+            </div>
+            """
+            st.markdown(html_confirmacao, unsafe_allow_html=True)
+            c_conf, c_canc = st.columns(2)
+            with c_conf:
+                st.button("Confirmar", type="primary", use_container_width=True, on_click=callback_exclusao, args=(id_cls,))
+            with c_canc:
+                if st.button("Fechar", type="secondary", use_container_width=True): st.rerun()
+        else:
             if st.button("Fechar", type="secondary", use_container_width=True): st.rerun()
 
 # ==========================================
@@ -215,7 +270,7 @@ if 'f_cls_cat' not in st.session_state or isinstance(st.session_state.f_cls_cat,
 if 'show_f_cls' not in st.session_state: st.session_state.show_f_cls = False
 
 c_titulo, c_filtrar, c_inserir, c_margem = st.columns([5, 1.5, 1.5, 3])
-with c_titulo: st.markdown("<h3 class='titulo-pagina'><span class='material-symbols-rounded'>account_tree</span> Cadastro de Classificações</h3>", unsafe_allow_html=True)
+with c_titulo: st.markdown("<h3 class='titulo-pagina'><span class='material-symbols-rounded'>account_tree</span> Cadastro de classificações</h3>", unsafe_allow_html=True)
 with c_filtrar:
     if st.button("Filtrar", type="tertiary", icon=":material/search:", use_container_width=True):
         st.session_state.show_f_cls = not st.session_state.show_f_cls; st.rerun()
