@@ -13,6 +13,7 @@ UtilitariosVisuais.inicializar_estados_modal()
 def gerar_hash_senha(senha):
     return hashlib.sha256(senha.encode('utf-8')).hexdigest()
 
+@st.cache_data(show_spinner=False, ttl=600)
 def carregar_dados(pesquisa=""):
     query = "SELECT id, nome, email, perfil, ativo FROM usuarios"
     params = []
@@ -33,6 +34,7 @@ def callback_inclusao():
         senha_hash = gerar_hash_senha(senha)
         try:
             GerenciadorBanco.executar_query("INSERT INTO usuarios (nome, email, senha, perfil, ativo) VALUES (%s, %s, %s, %s, %s)", (nome, email, senha_hash, perfil, ativo), is_select=False)
+            st.cache_data.clear()
             st.session_state.msg_sucesso = True
             st.session_state.form_cleared = True
             st.session_state.form_reset += 1
@@ -55,6 +57,7 @@ def callback_alteracao(id_usr):
                 GerenciadorBanco.executar_query("UPDATE usuarios SET nome = %s, email = %s, senha = %s, perfil = %s, ativo = %s WHERE id = %s", (nome, email, senha_hash, perfil, ativo, id_usr), is_select=False)
             else:
                 GerenciadorBanco.executar_query("UPDATE usuarios SET nome = %s, email = %s, perfil = %s, ativo = %s WHERE id = %s", (nome, email, perfil, ativo, id_usr), is_select=False)
+            st.cache_data.clear()
             st.session_state.msg_sucesso = True
             st.session_state.form_cleared = True
             st.session_state.form_reset += 1
@@ -65,6 +68,7 @@ def callback_alteracao(id_usr):
 
 def callback_exclusao(id_usr):
     GerenciadorBanco.executar_query("DELETE FROM usuarios WHERE id = %s", (int(id_usr),), is_select=False)
+    st.cache_data.clear()
     st.session_state.msg_sucesso = True
     st.session_state.form_cleared = True
     st.session_state.form_reset += 1

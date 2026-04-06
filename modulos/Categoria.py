@@ -18,6 +18,7 @@ if 'f_cat_busca' not in st.session_state: st.session_state.f_cat_busca = ""
 # ==========================================
 # 2. FUNÇÕES DE APOIO E CONSULTAS
 # ==========================================
+@st.cache_data(show_spinner=False, ttl=3600)
 def carregar_dados():
     return GerenciadorBanco.executar_query("SELECT id, nome, tipo FROM categorias ORDER BY nome ASC")
 
@@ -35,12 +36,14 @@ def callback_salvar_categoria(acao="inserir", id_cat=None):
     else:
         GerenciadorBanco.executar_query("INSERT INTO categorias (nome, tipo) VALUES (%s, %s)", (nome, tipo), is_select=False)
 
+    st.cache_data.clear()
     st.session_state.msg_sucesso = True
     st.session_state.modal_cat_ativa = None
     st.session_state.form_reset += 1
 
 def callback_exclusao_direta(id_cat):
     GerenciadorBanco.executar_query("DELETE FROM categorias WHERE id = %s", (id_cat,), is_select=False)
+    st.cache_data.clear()
     st.session_state.msg_sucesso = True
     st.session_state.form_reset += 1
 

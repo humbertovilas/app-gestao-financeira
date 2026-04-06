@@ -22,6 +22,7 @@ class GerenciadorBanco:
         def executar_criacao_tabelas(conexao):
             cursor = conexao.cursor()
             
+            # 1. CRIAÇÃO DAS TABELAS
             cursor.execute('''CREATE TABLE IF NOT EXISTS categorias 
                               (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, tipo TEXT NOT NULL)''')
                               
@@ -57,8 +58,18 @@ class GerenciadorBanco:
 
             cursor.execute('''ALTER TABLE lancamentos ADD COLUMN IF NOT EXISTS data_digitacao DATE DEFAULT CURRENT_DATE''')
 
+            # 2. PADRÃO DE DESEMPENHO (ÍNDICES B-TREE UNIVERSAIS)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_cat_nome ON categorias (nome)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_cls_nome ON classificacoes (nome)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_ev_nome ON eventos (nome)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_usr_nome ON usuarios (nome)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_usr_email ON usuarios (email)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_lanc_vencimento ON lancamentos (data_vencimento)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_lanc_status ON lancamentos (status)")
+
             conexao.commit()
             
+            # 3. USUÁRIO PADRÃO
             df_admin = pd.read_sql_query("SELECT count(id) as total FROM usuarios", conexao)
             if df_admin.iloc[0]['total'] == 0:
                 senha_padrao = hashlib.sha256("admin123".encode('utf-8')).hexdigest()
@@ -70,7 +81,6 @@ class GerenciadorBanco:
             conn = GerenciadorBanco.obter_conexao()
             executar_criacao_tabelas(conn)
         except Exception:
-            # Se a conexão do cache estiver morta (Neon DB dormindo), limpa e tenta de novo
             st.cache_resource.clear()
             conn = GerenciadorBanco.obter_conexao()
             executar_criacao_tabelas(conn)
@@ -86,7 +96,6 @@ class GerenciadorBanco:
                 cursor.execute(query, params)
                 conn.commit()
         except Exception:
-            # Tolerância a falhas global para consultas
             st.cache_resource.clear()
             conn = GerenciadorBanco.obter_conexao()
             if is_select:
@@ -160,7 +169,9 @@ class UtilitariosVisuais:
             st.session_state.msg_erro = ""
             st.rerun()
 
+    # O PULO DO GATO 1: CACHE DE IMAGENS. Evita ler o disco rígido repetidamente.
     @staticmethod
+    @st.cache_data(show_spinner=False, max_entries=100)
     def obter_imagem_base64(caminho_relativo):
         caminho_raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         caminho_absoluto = os.path.join(caminho_raiz, caminho_relativo)
@@ -182,5 +193,7 @@ class UtilitariosVisuais:
             
             with open(caminho_arquivo, "wb") as f:
                 f.write(uploaded_file.getbuffer())
+            # Limpa o cache de imagens para garantir que a nova versão seja carregada se substituída
+            st.cache_data.clear()
             return uploaded_file.name
         return "Sem ícone"

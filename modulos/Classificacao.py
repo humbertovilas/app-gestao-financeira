@@ -11,6 +11,7 @@ UtilitariosVisuais.inicializar_estados_modal()
 # ==========================================
 # ACESSO A DADOS (CRUD)
 # ==========================================
+@st.cache_data(show_spinner=False, ttl=600)
 def carregar_dados(pesquisa=""):
     query = """
     SELECT c.id, c.nome, c.id_categoria, c.icone, cat.nome as categoria, cat.tipo 
@@ -24,9 +25,11 @@ def carregar_dados(pesquisa=""):
     query += " ORDER BY c.nome ASC"
     return GerenciadorBanco.executar_query(query, tuple(params))
 
+@st.cache_data(show_spinner=False, ttl=3600)
 def obter_categorias():
     return GerenciadorBanco.executar_query("SELECT id, nome, tipo FROM categorias ORDER BY nome ASC")
 
+@st.cache_data(show_spinner=False, ttl=3600)
 def obter_lista_cat_filtro():
     df_cat = GerenciadorBanco.executar_query("SELECT DISTINCT nome FROM categorias ORDER BY nome")
     return df_cat['nome'].tolist() if not df_cat.empty else []
@@ -64,6 +67,7 @@ def callback_inclusao(icone_base):
         id_categoria = int(categoria_str.split(" - ")[0])
 
     GerenciadorBanco.executar_query("INSERT INTO classificacoes (nome, id_categoria, icone) VALUES (%s, %s, %s)", (nome, id_categoria, icone_final), is_select=False)
+    st.cache_data.clear()
     st.session_state.msg_sucesso_inc = True
     st.session_state.form_cleared = True
     st.session_state.form_reset += 1
@@ -101,12 +105,14 @@ def callback_alteracao(id_cls, icone_atual):
         id_categoria = int(categoria_str.split(" - ")[0])
 
     GerenciadorBanco.executar_query("UPDATE classificacoes SET nome = %s, id_categoria = %s, icone = %s WHERE id = %s", (nome, id_categoria, icone_final, id_cls), is_select=False)
+    st.cache_data.clear()
     st.session_state.msg_sucesso = True
     st.session_state.form_cleared = True
     st.session_state.form_reset += 1
 
 def callback_exclusao(id_cls):
     GerenciadorBanco.executar_query("DELETE FROM classificacoes WHERE id = %s", (int(id_cls),), is_select=False)
+    st.cache_data.clear()
     st.session_state.msg_sucesso = True
     st.session_state.form_cleared = True
     st.session_state.form_reset += 1

@@ -6,6 +6,7 @@
     flex-direction: column !important;
     position: relative !important;
     min-height: 100vh !important;
+    padding-bottom: 80px !important; /* Cria um "chão" falso para o menu não atropelar o botão Sair */
 }
 
 [data-testid="stSidebarUserContent"] {
@@ -17,7 +18,44 @@
 [data-testid="stSidebarNav"] {
     order: 2 !important;
     padding-top: 10px !important;
-    padding-bottom: 90px !important;
+}
+
+/* ==========================================
+   BOTÃO DE SAIR (ISOLADO E CRAVADO NO RODAPÉ)
+   ========================================== */
+/* Esconde a âncora invisível */
+div.element-container:has(#ancora-sair) {
+    display: none !important;
+}
+
+/* Arranca APENAS o botão Sair da ordem natural e fixa no fundo da tela */
+div.element-container:has(#ancora-sair) + div.element-container {
+    position: absolute !important;
+    bottom: 20px !important;
+    left: 15px !important;
+    right: 15px !important;
+    width: auto !important;
+    z-index: 9999 !important;
+}
+
+/* Deixa o botão com cara de menu (sem fundo e sem borda) */
+div.element-container:has(#ancora-sair) + div.element-container button {
+    background-color: transparent !important;
+    border: none !important;
+    color: #adb5bd !important;
+    box-shadow: none !important;
+    font-weight: 500 !important;
+    display: flex !important;
+    justify-content: flex-start !important;
+    padding-left: 10px !important;
+    transition: all 0.2s ease-in-out !important;
+}
+
+/* Acende em alerta suave ao passar o mouse */
+div.element-container:has(#ancora-sair) + div.element-container button:hover {
+    color: #e76f51 !important;
+    background-color: rgba(231, 111, 81, 0.1) !important;
+    border-radius: 6px !important;
 }
 
 /* ==========================================
@@ -86,68 +124,21 @@ html, body, [class*="css"]  {
 }
 
 /* ==========================================
-   BOTÃO DE SAIR DA SESSÃO (RODAPÉ ABSOLUTO CIRÚRGICO)
-   ========================================== */
-[data-testid="stSidebarUserContent"], 
-[data-testid="stSidebarUserContent"] > div,
-[data-testid="stSidebarUserContent"] .element-container {
-    position: static !important;
-    transform: none !important;
-}
-
-[data-testid="stSidebar"] div.stButton {
-    position: absolute !important;
-    bottom: 25px !important;
-    left: 15px !important;
-    right: 15px !important;
-    width: auto !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    z-index: 999 !important;
-}
-
-[data-testid="stSidebar"] div.stButton > button {
-    background-color: transparent !important;
-    border: 1px solid transparent !important;
-    color: #e9ecef !important;
-    box-shadow: none !important;
-    font-weight: 500;
-    display: flex;
-    justify-content: flex-start;
-    padding-left: 15px;
-    transition: all 0.2s ease-in-out;
-    width: 100% !important;
-}
-
-[data-testid="stSidebar"] div.stButton > button:hover {
-    color: var(--cor-destaque) !important;
-    background-color: rgba(32, 201, 151, 0.05) !important;
-}
-
-/* ==========================================
-   BOTÃO DE RECOLHER MENU (COLLAPSE <)
+   BOTÃO DE RECOLHER MENU (AGRESSIVAMENTE VISÍVEL)
    ========================================== */
 [data-testid="stSidebarCollapseButton"] {
-    border: 1px solid rgba(255, 255, 255, 0.3) !important;
-    border-radius: 6px !important;
-    background-color: transparent !important;
-    box-shadow: none !important;
-    transition: 0.3s !important;
+    background-color: var(--cor-destaque) !important;
+    border: 2px solid white !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    border-radius: 50% !important;
 }
 
 [data-testid="stSidebarCollapseButton"] svg {
-    color: white !important;
     fill: white !important;
-}
-
-[data-testid="stSidebarCollapseButton"]:hover {
-    background-color: rgba(32, 201, 151, 0.2) !important;
-    border-color: #20c997 !important;
-}
-
-[data-testid="stSidebarCollapseButton"]:hover svg {
-    color: #20c997 !important;
-    fill: #20c997 !important;
+    stroke: white !important;
+    color: white !important;
 }
 
 /* ==========================================
@@ -311,7 +302,7 @@ html, body, [class*="css"]  {
 }
 
 /* ==========================================
-   OCULTAR CAIXA NATIVA DE UPLOAD DE ARQUIVO (FORÇA BRUTA)
+   OCULTAR CAIXA NATIVA DE UPLOAD DE ARQUIVO
    ========================================== */
 [data-testid="stUploadedFile"],
 [data-testid="stFileUploaderFile"],

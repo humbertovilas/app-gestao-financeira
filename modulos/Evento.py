@@ -18,6 +18,7 @@ if 'f_ev_busca' not in st.session_state: st.session_state.f_ev_busca = ""
 # ==========================================
 # 2. FUNÇÕES DE APOIO E CONSULTAS
 # ==========================================
+@st.cache_data(show_spinner=False, ttl=600)
 def carregar_dados():
     query = """
         SELECT e.id, e.nome, c.nome as classificacao_nome, e.id_classificacao
@@ -27,9 +28,11 @@ def carregar_dados():
     """
     return GerenciadorBanco.executar_query(query)
 
+@st.cache_data(show_spinner=False, ttl=3600)
 def obter_classificacoes():
     return GerenciadorBanco.executar_query("SELECT id, nome FROM classificacoes ORDER BY nome ASC")
 
+@st.cache_data(show_spinner=False, ttl=3600)
 def obter_categorias():
     return GerenciadorBanco.executar_query("SELECT id, nome FROM categorias ORDER BY nome ASC")
 
@@ -67,12 +70,14 @@ def callback_salvar_evento(acao="inserir", id_evento=None):
     else:
         GerenciadorBanco.executar_query("INSERT INTO eventos (nome, id_classificacao) VALUES (%s, %s)", (nome_ev, id_cls_final), is_select=False)
 
+    st.cache_data.clear()
     st.session_state.msg_sucesso = True
     st.session_state.modal_ev_ativa = None
     st.session_state.form_reset += 1
 
 def callback_exclusao_direta(id_evento):
     GerenciadorBanco.executar_query("DELETE FROM eventos WHERE id = %s", (id_evento,), is_select=False)
+    st.cache_data.clear()
     st.session_state.msg_sucesso = True
     st.session_state.form_reset += 1
 

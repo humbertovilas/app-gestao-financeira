@@ -41,7 +41,6 @@ def verificar_login(email, senha):
 # MÓDULO VISUAL - TELA DE LOGIN
 # ==========================================
 def tela_login(container_principal):
-    # Envelopa todo o formulário na caixa de contenção
     with container_principal.container():
         st.markdown(
             """
@@ -77,7 +76,6 @@ def tela_login(container_principal):
                         st.warning("Por favor, preencha o e-mail e a senha.")
                     else:
                         if verificar_login(email_login, senha_login):
-                            # Evapora o formulário instantaneamente antes de virar a página
                             container_principal.empty() 
                             st.rerun()
                         else:
@@ -89,7 +87,6 @@ def tela_login(container_principal):
 def iniciar_sistema():
     espaco_carregamento = st.empty()
     
-    # A engrenagem elegante de carregamento
     if not st.session_state.autenticado:
         with espaco_carregamento:
             st.markdown(
@@ -104,15 +101,13 @@ def iniciar_sistema():
             
     GerenciadorBanco.inicializar_banco()
     UtilitariosVisuais.aplicar_configuracoes_ui()
-    
-    # Limpa a engrenagem
     espaco_carregamento.empty()
     
     if not st.session_state.autenticado:
-        # Cria a caixa de contenção que será passada para o Login
         container_login = st.empty()
         tela_login(container_login)
     else:
+        # LOGOTIPO E SESSÃO (Topo)
         html_sidebar_header = f"""
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 25px; padding: 0 5px;">
             <span class="material-symbols-rounded" style="color: #20c997; font-size: 28px;">pie_chart</span>
@@ -126,7 +121,9 @@ def iniciar_sistema():
         </div>
         """
         st.sidebar.markdown(html_sidebar_header, unsafe_allow_html=True)
-        
+
+        # O BOTÃO SAIR VEM LOGO APÓS A SESSÃO (O CSS cuidará de escondê-lo aqui e renderizá-lo no rodapé)
+        st.sidebar.markdown('<div id="ancora-sair"></div>', unsafe_allow_html=True)
         if st.sidebar.button("Sair do sistema", icon=":material/logout:", use_container_width=True):
             st.session_state.autenticado = False
             st.session_state.usuario_logado = ""
@@ -134,14 +131,23 @@ def iniciar_sistema():
             st.session_state.perfil_logado = ""
             st.rerun()
 
-        paginas_basicas = [
-            st.Page("modulos/Lancamento.py", title="Lançamentos", icon=":material/account_balance_wallet:"),
-            st.Page("modulos/Categoria.py", title="Categorias", icon=":material/folder:"),
-            st.Page("modulos/Classificacao.py", title="Classificações", icon=":material/account_tree:"),
+        # O MENU (Meio da tela)
+        paginas_operacao = [
+            st.Page("modulos/AgendaFinanceira.py", title="Agenda Financeira", icon=":material/calendar_month:"),
+            st.Page("modulos/ContaBancaria.py", title="Contas Bancárias", icon=":material/account_balance:"),
             st.Page("modulos/Evento.py", title="Eventos", icon=":material/sell:")
         ]
         
-        dicionario_paginas = {"Operação e Cadastros": paginas_basicas}
+        paginas_auxiliares = [
+            st.Page("modulos/Categoria.py", title="Categorias", icon=":material/folder:"),
+            st.Page("modulos/Classificacao.py", title="Classificações", icon=":material/account_tree:"),
+            st.Page("modulos/Banco.py", title="Bancos", icon=":material/museum:")
+        ]
+        
+        dicionario_paginas = {
+            "Operação e Cadastros": paginas_operacao,
+            "Tabelas Auxiliares": paginas_auxiliares
+        }
         
         if st.session_state.perfil_logado == "Administrador":
             dicionario_paginas["Segurança"] = [st.Page("modulos/CadastroUsuario.py", title="Usuários do sistema", icon=":material/manage_accounts:")]
