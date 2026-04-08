@@ -22,7 +22,7 @@ class GerenciadorBanco:
         def executar_criacao_tabelas(conexao):
             cursor = conexao.cursor()
             
-            # 1. CRIAÇÃO DAS TABELAS
+            # 1. CRIAÇÃO DAS TABELAS BASE
             cursor.execute('''CREATE TABLE IF NOT EXISTS categorias 
                               (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, tipo TEXT NOT NULL)''')
                               
@@ -40,6 +40,17 @@ class GerenciadorBanco:
                               (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, email TEXT UNIQUE NOT NULL, 
                                senha TEXT NOT NULL, perfil TEXT NOT NULL, ativo BOOLEAN DEFAULT TRUE)''')
 
+            # 2. MIGRAÇÃO DA TABELA DE BANCOS E CONTAS (Removido da Agenda)
+            cursor.execute('''CREATE TABLE IF NOT EXISTS bancos (codigo VARCHAR(10) PRIMARY KEY, nome VARCHAR(150))''')
+            
+            cursor.execute('''CREATE TABLE IF NOT EXISTS contas_bancarias (id SERIAL PRIMARY KEY)''')
+            cursor.execute('''ALTER TABLE contas_bancarias ADD COLUMN IF NOT EXISTS numero_conta VARCHAR(20)''')
+            cursor.execute('''ALTER TABLE contas_bancarias ADD COLUMN IF NOT EXISTS agencia_codigo VARCHAR(20)''')
+            cursor.execute('''ALTER TABLE contas_bancarias ADD COLUMN IF NOT EXISTS agencia_nome VARCHAR(150)''')
+            cursor.execute('''ALTER TABLE contas_bancarias ADD COLUMN IF NOT EXISTS banco_codigo VARCHAR(10)''')
+            cursor.execute('''ALTER TABLE contas_bancarias ADD COLUMN IF NOT EXISTS endereco_agencia VARCHAR(250)''')
+
+            # 3. CRIAÇÃO DA TABELA DE LANÇAMENTOS
             cursor.execute('''CREATE TABLE IF NOT EXISTS lancamentos 
                               (id SERIAL PRIMARY KEY, 
                                data_digitacao DATE DEFAULT CURRENT_DATE,
@@ -57,8 +68,9 @@ class GerenciadorBanco:
                                FOREIGN KEY (id_classificacao) REFERENCES classificacoes (id))''')
 
             cursor.execute('''ALTER TABLE lancamentos ADD COLUMN IF NOT EXISTS data_digitacao DATE DEFAULT CURRENT_DATE''')
+            cursor.execute('''ALTER TABLE lancamentos ADD COLUMN IF NOT EXISTS id_conta_bancaria INTEGER''')
 
-            # 2. PADRÃO DE DESEMPENHO (ÍNDICES B-TREE UNIVERSAIS)
+            # 4. PADRÃO DE DESEMPENHO (ÍNDICES B-TREE UNIVERSAIS)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_cat_nome ON categorias (nome)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_cls_nome ON classificacoes (nome)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_ev_nome ON eventos (nome)")
@@ -67,9 +79,23 @@ class GerenciadorBanco:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_lanc_vencimento ON lancamentos (data_vencimento)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_lanc_status ON lancamentos (status)")
 
+            # 5. CARGA INICIAL DE DADOS (Bancos e Usuário Padrão)
             conexao.commit()
             
-            # 3. USUÁRIO PADRÃO
+            cursor.execute("SELECT count(codigo) as total FROM bancos")
+            qtd_bancos = cursor.fetchone()[0]
+            if qtd_bancos == 0:
+                bancos_iniciais = [
+                    ('001', 'Banco do Brasil S.A.'), ('104', 'Caixa Econômica Federal'),
+                    ('033', 'Banco Santander (Brasil) S.A.'), ('341', 'Itaú Unibanco S.A.'),
+                    ('237', 'Banco Bradesco S.A.'), ('260', 'Nu Pagamentos S.A. (Nubank)'),
+                    ('077', 'Banco Inter S.A.'), ('336', 'Banco C6 S.A.'),
+                    ('000', 'Banco Múltiplo (Outros)')
+                ]
+                for c, n in bancos_iniciais:
+                    cursor.execute("INSERT INTO bancos (codigo, nome) VALUES (%s, %s)", (c, n))
+                conexao.commit()
+
             df_admin = pd.read_sql_query("SELECT count(id) as total FROM usuarios", conexao)
             if df_admin.iloc[0]['total'] == 0:
                 senha_padrao = hashlib.sha256("admin123".encode('utf-8')).hexdigest()
@@ -169,7 +195,7 @@ class UtilitariosVisuais:
             st.session_state.msg_erro = ""
             st.rerun()
 
-    # O PULO DO GATO 1: CACHE DE IMAGENS. Evita ler o disco rígido repetidamente.
+    # CACHE DE IMAGENS. Evita ler o disco rígido repetidamente.
     @staticmethod
     @st.cache_data(show_spinner=False, max_entries=100)
     def obter_imagem_base64(caminho_relativo):
@@ -193,7 +219,6 @@ class UtilitariosVisuais:
             
             with open(caminho_arquivo, "wb") as f:
                 f.write(uploaded_file.getbuffer())
-            # Limpa o cache de imagens para garantir que a nova versão seja carregada se substituída
             st.cache_data.clear()
             return uploaded_file.name
         return "Sem ícone"

@@ -7,34 +7,13 @@ import time
 from infraestrutura.ProcessoCrud import GerenciadorBanco, UtilitariosVisuais
 
 # ==========================================
-# 1. MIGRAÇÃO E CARGA INTELIGENTE DE DADOS
+# 1. INICIALIZAÇÃO E GARANTIA DE ESTRUTURA
 # ==========================================
-def garantir_estrutura_banco():
-    try:
-        GerenciadorBanco.executar_query("CREATE TABLE IF NOT EXISTS bancos (codigo VARCHAR(10) PRIMARY KEY, nome VARCHAR(150))", is_select=False)
-        qtd = GerenciadorBanco.executar_query("SELECT count(codigo) as total FROM bancos").iloc[0]['total']
-        if qtd == 0:
-            bancos_iniciais = [
-                ('001', 'Banco do Brasil S.A.'), ('104', 'Caixa Econômica Federal'),
-                ('033', 'Banco Santander (Brasil) S.A.'), ('341', 'Itaú Unibanco S.A.'),
-                ('237', 'Banco Bradesco S.A.'), ('260', 'Nu Pagamentos S.A. (Nubank)'),
-                ('077', 'Banco Inter S.A.'), ('336', 'Banco C6 S.A.'),
-                ('000', 'Banco Múltiplo (Outros)')
-            ]
-            for c, n in bancos_iniciais:
-                GerenciadorBanco.executar_query("INSERT INTO bancos (codigo, nome) VALUES (%s, %s)", (c, n), is_select=False)
+@st.cache_resource(show_spinner=False)
+def garantir_banco_seguro():
+    GerenciadorBanco.inicializar_banco()
 
-        GerenciadorBanco.executar_query("CREATE TABLE IF NOT EXISTS contas_bancarias (id SERIAL PRIMARY KEY)", is_select=False)
-        GerenciadorBanco.executar_query("ALTER TABLE contas_bancarias ADD COLUMN IF NOT EXISTS numero_conta VARCHAR(20)", is_select=False)
-        GerenciadorBanco.executar_query("ALTER TABLE contas_bancarias ADD COLUMN IF NOT EXISTS agencia_codigo VARCHAR(20)", is_select=False)
-        GerenciadorBanco.executar_query("ALTER TABLE contas_bancarias ADD COLUMN IF NOT EXISTS agencia_nome VARCHAR(150)", is_select=False)
-        GerenciadorBanco.executar_query("ALTER TABLE contas_bancarias ADD COLUMN IF NOT EXISTS banco_codigo VARCHAR(10)", is_select=False)
-        GerenciadorBanco.executar_query("ALTER TABLE contas_bancarias ADD COLUMN IF NOT EXISTS endereco_agencia VARCHAR(250)", is_select=False)
-        GerenciadorBanco.executar_query("ALTER TABLE lancamentos ADD COLUMN IF NOT EXISTS id_conta_bancaria INTEGER", is_select=False)
-    except Exception:
-        pass 
-
-garantir_estrutura_banco()
+garantir_banco_seguro()
 UtilitariosVisuais.aplicar_configuracoes_ui()
 UtilitariosVisuais.inicializar_estados_modal()
 
@@ -318,7 +297,7 @@ def modal_exclusao(id_l, ev_nome):
         if st.button("Fechar", type="secondary", use_container_width=True): st.session_state.modal_del_id = None; st.rerun()
 
 # ==========================================
-# 5. AGENDA FINANCEIRA (INTERFACE)
+# 5. INICIALIZAÇÃO DE ESTADOS E DATAS
 # ==========================================
 if 'show_filtros_lanc' not in st.session_state: st.session_state.show_filtros_lanc = False
 hoje = date.today()
@@ -330,6 +309,39 @@ if 'f_ln_nat' not in st.session_state: st.session_state.f_ln_nat = "Entradas e s
 if 'f_ln_stat' not in st.session_state: st.session_state.f_ln_stat = "Todos os status"
 if 'f_ln_evs' not in st.session_state: st.session_state.f_ln_evs = []
 
+# ==========================================
+# 6. PROCESSAMENTO DOS DADOS (Antes da UI)
+# ==========================================
+df_base = carregar_dados(st.session_state.f_ln_dt_ini, st.session_state.f_ln_dt_fim).copy()
+
+saldo_anterior = obter_saldo_anterior(st.session_state.f_ln_dt_ini)
+entradas_periodo = 0.0
+saidas_periodo = 0.0
+
+if not df_base.empty:
+    df_base['entrada'] = df_base.apply(lambda row: row['valor_final'] if row['tipo'] == 'Receita' else 0.0, axis=1)
+    df_base['saida'] = df_base.apply(lambda row: row['valor_final'] if row['tipo'] == 'Despesa' else 0.0, axis=1)
+    df_base['saldo_acumulado'] = df_base['entrada'].cumsum() - df_base['saida'].cumsum() + saldo_anterior
+    
+    if st.session_state.f_ln_nat == "Apenas receitas (+)": df_base = df_base[df_base['tipo'] == 'Receita']
+    elif st.session_state.f_ln_nat == "Apenas despesas (-)": df_base = df_base[df_base['tipo'] == 'Despesa']
+        
+    if st.session_state.f_ln_stat == "Apenas pendentes": df_base = df_base[df_base['status'].str.lower() == 'pendente']
+    elif st.session_state.f_ln_stat == "Apenas efetivados": df_base = df_base[df_base['status'].str.lower() == 'efetivado']
+        
+    if st.session_state.f_ln_evs: df_base = df_base[df_base['nome_base_evento'].isin(st.session_state.f_ln_evs)]
+    
+    entradas_periodo = df_base['entrada'].sum()
+    saidas_periodo = df_base['saida'].sum()
+
+df = df_base
+saldo_projetado = saldo_anterior + entradas_periodo - saidas_periodo
+cor_proj = "#20c997" if saldo_projetado >= 0 else "#dc3545"
+
+# ==========================================
+# 7. RENDERIZAÇÃO DA INTERFACE (Hierarquia Invertida)
+# ==========================================
+# 7.1 CABEÇALHO SUPERIOR
 c_tit, c_fil, c_ins, c_mar = st.columns([5, 1.5, 1.5, 3])
 with c_tit: st.markdown("<h3 class='titulo-pagina'><span class='material-symbols-rounded'>calendar_month</span> Agenda Financeira</h3>", unsafe_allow_html=True)
 with c_fil:
@@ -337,9 +349,30 @@ with c_fil:
 with c_ins:
     if st.button("Inserir", type="primary", icon=":material/add:", use_container_width=True): st.session_state.modal_ativa, st.session_state.modal_id, st.session_state.modal_dados = "inserir", None, None; st.rerun()
 
-# =========================================================
-# O FRAGMENTO MÁGICO: Isola o refresh visual apenas na caixa de filtro
-# =========================================================
+# 7.2 CARDS DE RESUMO (Ficam fixos visualmente no topo)
+html_cards = f"""
+<div style="display: flex; gap: 15px; margin-bottom: 20px; margin-top: 5px;">
+    <div style="flex: 1; background-color: #6c757d; color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Saldo anterior (Ref. Filtro)</div>
+        <div style="font-size: 22px; font-weight: 700; margin-top: 5px;">{formatar_moeda(saldo_anterior)}</div>
+    </div>
+    <div style="flex: 1; background-color: #20c997; color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">(+) Entradas no período</div>
+        <div style="font-size: 22px; font-weight: 700; margin-top: 5px;">{formatar_moeda(entradas_periodo)}</div>
+    </div>
+    <div style="flex: 1; background-color: #e76f51; color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">(-) Saídas no período</div>
+        <div style="font-size: 22px; font-weight: 700; margin-top: 5px;">{formatar_moeda(saidas_periodo)}</div>
+    </div>
+    <div style="flex: 1; background-color: #1a2a40; color: {cor_proj}; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 5px solid {cor_proj};">
+        <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: white;">(=) Saldo projetado</div>
+        <div style="font-size: 22px; font-weight: 700; margin-top: 5px;">{formatar_moeda(saldo_projetado)}</div>
+    </div>
+</div>
+"""
+st.markdown(html_cards, unsafe_allow_html=True)
+
+# 7.3 PAINEL DE FILTROS (Abre entre os cards e a tabela)
 @st.fragment
 def renderizar_painel_filtros():
     with st.container(border=True):
@@ -378,7 +411,7 @@ def renderizar_painel_filtros():
                     st.session_state.f_ln_nat = v_nat
                     st.session_state.f_ln_stat = v_stat
                     st.session_state.f_ln_evs = v_evs
-                    st.rerun() # Executa o refresh na página inteira
+                    st.rerun()
             else:
                 if st.button("Pesquisar", type="tertiary", icon=":material/search:", use_container_width=True):
                     st.session_state.f_ln_dt_ini = v_dt_ini
@@ -391,69 +424,17 @@ def renderizar_painel_filtros():
 if st.session_state.show_filtros_lanc:
     renderizar_painel_filtros()
 
-# FIM DO FRAGMENTO ==========================================
-
-df_base = carregar_dados(st.session_state.f_ln_dt_ini, st.session_state.f_ln_dt_fim).copy()
-
-saldo_anterior = obter_saldo_anterior(st.session_state.f_ln_dt_ini)
-entradas_periodo = 0.0
-saidas_periodo = 0.0
-
-if not df_base.empty:
-    df_base['entrada'] = df_base.apply(lambda row: row['valor_final'] if row['tipo'] == 'Receita' else 0.0, axis=1)
-    df_base['saida'] = df_base.apply(lambda row: row['valor_final'] if row['tipo'] == 'Despesa' else 0.0, axis=1)
-    df_base['saldo_acumulado'] = df_base['entrada'].cumsum() - df_base['saida'].cumsum() + saldo_anterior
-    
-    if st.session_state.f_ln_nat == "Apenas receitas (+)": df_base = df_base[df_base['tipo'] == 'Receita']
-    elif st.session_state.f_ln_nat == "Apenas despesas (-)": df_base = df_base[df_base['tipo'] == 'Despesa']
-        
-    if st.session_state.f_ln_stat == "Apenas pendentes": df_base = df_base[df_base['status'].str.lower() == 'pendente']
-    elif st.session_state.f_ln_stat == "Apenas efetivados": df_base = df_base[df_base['status'].str.lower() == 'efetivado']
-        
-    if st.session_state.f_ln_evs: df_base = df_base[df_base['nome_base_evento'].isin(st.session_state.f_ln_evs)]
-    
-    entradas_periodo = df_base['entrada'].sum()
-    saidas_periodo = df_base['saida'].sum()
-
-df = df_base
-saldo_projetado = saldo_anterior + entradas_periodo - saidas_periodo
-cor_proj = "#20c997" if saldo_projetado >= 0 else "#dc3545"
-
-html_cards = f"""
-<div style="display: flex; gap: 15px; margin-bottom: 25px; margin-top: 15px;">
-    <div style="flex: 1; background-color: #6c757d; color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-        <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Saldo anterior (Ref. Filtro)</div>
-        <div style="font-size: 22px; font-weight: 700; margin-top: 5px;">{formatar_moeda(saldo_anterior)}</div>
-    </div>
-    <div style="flex: 1; background-color: #20c997; color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-        <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">(+) Entradas no período</div>
-        <div style="font-size: 22px; font-weight: 700; margin-top: 5px;">{formatar_moeda(entradas_periodo)}</div>
-    </div>
-    <div style="flex: 1; background-color: #e76f51; color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-        <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">(-) Saídas no período</div>
-        <div style="font-size: 22px; font-weight: 700; margin-top: 5px;">{formatar_moeda(saidas_periodo)}</div>
-    </div>
-    <div style="flex: 1; background-color: #1a2a40; color: {cor_proj}; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 5px solid {cor_proj};">
-        <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: white;">(=) Saldo projetado</div>
-        <div style="font-size: 22px; font-weight: 700; margin-top: 5px;">{formatar_moeda(saldo_projetado)}</div>
-    </div>
-</div>
-"""
-st.markdown(html_cards, unsafe_allow_html=True)
-
-# Cabeçalho da Grid Ajustado
+# 7.4 GRID DE DADOS
 st.markdown('''<div class="cabecalho-grid"><div style="display: flex;"><div style="flex: 1.0;">Emissão</div><div style="flex: 1.0;">Venc.</div><div style="flex: 1.1; text-align: center;">Status</div><div style="flex: 2.5;">Evento financeiro</div><div style="flex: 1.2; text-align: center;">Categoria</div><div style="flex: 1.0; text-align: right;">Entrada</div><div style="flex: 1.0; text-align: right;">Saída</div><div style="flex: 1.0; text-align: right;">Saldo</div><div style="flex: 2.0; text-align: center;">Ações</div></div></div>''', unsafe_allow_html=True)
 
 if not df.empty:
     for _, row in df.iterrows():
-        # Proporções alinhadas com o flexbox do cabeçalho
         c = st.columns([1.0, 1.0, 1.1, 2.5, 1.2, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.5], vertical_alignment="center")
         cor_venc, peso_venc = "#1a2a40", "600"
         if row['status'].lower() == 'pendente':
             if row['data_vencimento'] < hoje: cor_venc, peso_venc = "#dc3545", "800"
             elif row['data_vencimento'] == hoje: cor_venc, peso_venc = "#fd7e14", "800"
 
-        # Trava CSS white-space: nowrap aplicada nas datas
         c[0].markdown(f"<span style='font-size: 13px; white-space: nowrap;'>{row['data_digitacao'].strftime('%d/%m/%Y')}</span>", unsafe_allow_html=True)
         c[1].markdown(f"<span style='font-size: 13px; font-weight: {peso_venc}; color: {cor_venc}; white-space: nowrap;'>{row['data_vencimento'].strftime('%d/%m/%Y')}</span>", unsafe_allow_html=True)
         
@@ -485,7 +466,7 @@ if not df.empty:
         st.markdown("<hr style='margin: 5px 0; border: 0; border-top: 1px solid #eee;'>", unsafe_allow_html=True)
 else: st.info("Nenhum lançamento encontrado neste período ou para o filtro selecionado.")
 
-# MOTOR CENTRAL DE RENDERIZAÇÃO
+# MOTOR CENTRAL DE RENDERIZAÇÃO DE MODAIS
 if st.session_state.modal_ativa: modal_formulario(st.session_state.modal_ativa, st.session_state.modal_id, st.session_state.modal_dados)
 elif st.session_state.modal_bx_id is not None: modal_baixa(st.session_state.modal_bx_id, st.session_state.modal_bx_ev, st.session_state.modal_bx_vlr)
 elif st.session_state.modal_del_id is not None: modal_exclusao(st.session_state.modal_del_id, st.session_state.modal_del_ev)

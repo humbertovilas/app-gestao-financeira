@@ -122,7 +122,7 @@ def iniciar_sistema():
         """
         st.sidebar.markdown(html_sidebar_header, unsafe_allow_html=True)
 
-        # O BOTÃO SAIR VEM LOGO APÓS A SESSÃO (O CSS cuidará de escondê-lo aqui e renderizá-lo no rodapé)
+        # A ÂNCORA INVISÍVEL (O CSS joga o botão de baixo pro rodapé)
         st.sidebar.markdown('<div id="ancora-sair"></div>', unsafe_allow_html=True)
         if st.sidebar.button("Sair do sistema", icon=":material/logout:", use_container_width=True):
             st.session_state.autenticado = False
@@ -131,9 +131,10 @@ def iniciar_sistema():
             st.session_state.perfil_logado = ""
             st.rerun()
 
-        # O MENU (Meio da tela)
+        # O MENU
         paginas_operacao = [
             st.Page("modulos/AgendaFinanceira.py", title="Agenda Financeira", icon=":material/calendar_month:"),
+            st.Page("modulos/CartaoCredito.py", title="Cartões de Crédito", icon=":material/credit_card:"),
             st.Page("modulos/ContaBancaria.py", title="Contas Bancárias", icon=":material/account_balance:"),
             st.Page("modulos/Evento.py", title="Eventos", icon=":material/sell:")
         ]
