@@ -51,16 +51,18 @@ def obter_saldo_anterior(data_ini):
 def carregar_dados(data_ini, data_fim):
     query = """
     SELECT 
-        l.id, l.data_digitacao, l.data_vencimento, l.data_efetivacao, l.status,
+        l.id, l.data_digitacao, l.data_compra, l.data_vencimento, l.data_efetivacao, l.status,
         e.nome AS nome_base_evento, l.id_evento, l.id_classificacao,
         CASE WHEN l.total_parcelas > 1 THEN e.nome || ' (' || l.parcela_atual || '/' || l.total_parcelas || ')' ELSE e.nome END AS evento_exibicao,
         c.nome AS classificacao, c.icone, cat.nome AS categoria, cat.tipo,
         COALESCE(l.valor_realizado, l.valor_previsto) AS valor_final,
-        l.observacao, l.valor_previsto, l.id_conta_bancaria
+        l.observacao, l.valor_previsto, l.id_conta_bancaria,
+        l.id_cartao_credito, cc.nome AS nome_cartao
     FROM lancamentos l
     INNER JOIN eventos e ON l.id_evento = e.id
     INNER JOIN classificacoes c ON l.id_classificacao = c.id
     INNER JOIN categorias cat ON c.id_categoria = cat.id
+    LEFT JOIN cartoes_credito cc ON l.id_cartao_credito = cc.id
     WHERE l.data_vencimento >= %s AND l.data_vencimento <= %s
     ORDER BY l.data_vencimento ASC, l.id ASC
     """
@@ -72,7 +74,11 @@ def obter_auxiliares():
     df_cls = GerenciadorBanco.executar_query("SELECT id, nome FROM classificacoes ORDER BY nome ASC")
     df_bco = GerenciadorBanco.executar_query("SELECT codigo, nome FROM bancos ORDER BY nome ASC")
     df_cb = GerenciadorBanco.executar_query("SELECT id, numero_conta, agencia_codigo, banco_codigo FROM contas_bancarias ORDER BY id DESC")
-    return df_ev, df_cls, df_bco, df_cb
+    try:
+        df_cc = GerenciadorBanco.executar_query("SELECT id, nome, dia_fechamento, dia_vencimento FROM cartoes_credito ORDER BY nome ASC")
+    except:
+        df_cc = pd.DataFrame(columns=['id', 'nome', 'dia_fechamento', 'dia_vencimento'])
+    return df_ev, df_cls, df_bco, df_cb, df_cc
 
 # ==========================================
 # 3. CALLBACKS DE NEGÓCIO
@@ -84,7 +90,6 @@ def on_change_intervalo(fr_id, dt_emissao):
 def callback_salvar_lancamento(acao="inserir", id_lancamento=None):
     fr_id = st.session_state.get("ln_form_reset")
     dt_digitacao = date.today()
-    dt_venc_manual = st.session_state.get(f"ln_data_venc_{fr_id}")
     valor = st.session_state.get(f"ln_valor_{fr_id}", 0.0)
     parcelas = st.session_state.get(f"ln_parcelas_{fr_id}", 1)
     intervalo = st.session_state.get(f"ln_intervalo_{fr_id}", 1)
@@ -96,6 +101,32 @@ def callback_salvar_lancamento(acao="inserir", id_lancamento=None):
         st.session_state.msg_erro = "O valor deve ser maior que zero."
         return
 
+    # LÓGICA DE CARTÃO DE CRÉDITO E INTERVALOS
+    modo_pag = st.session_state.get(f"ln_modo_pag_{fr_id}", "Simplificado")
+    id_cc_final = None
+    dt_compra_final = None
+    dt_venc_manual = st.session_state.get(f"ln_data_venc_{fr_id}")
+
+    if modo_pag == "Cartão de Crédito":
+        sel_cc = st.session_state.get(f"ln_cc_{fr_id}")
+        if sel_cc: id_cc_final = int(sel_cc.split(" - ")[0])
+        dt_compra_final = st.session_state.get(f"ln_dt_compra_{fr_id}")
+        
+        # Recupera as informações do cartão selecionado para calcular vencimentos
+        if id_cc_final:
+            _, _, _, _, df_cc = obter_auxiliares()
+            card_info = df_cc[df_cc['id'] == id_cc_final].iloc[0]
+            
+            if dt_compra_final:
+                mes_base, ano_base = dt_compra_final.month, dt_compra_final.year
+                if dt_compra_final.day >= int(card_info['dia_fechamento']):
+                    mes_base += 1
+                    if mes_base > 12: mes_base, ano_base = 1, ano_base + 1
+                _, last_day = calendar.monthrange(ano_base, mes_base)
+                dia_venc_real = min(int(card_info['dia_vencimento']), last_day)
+                dt_venc_manual = date(ano_base, mes_base, dia_venc_real)
+
+    # RESOLUÇÃO DO EVENTO (Vinculação ou Criação)
     id_evento_final = None
     if modo_evento == "Cadastrar novo":
         nome_novo = st.session_state.get(f"ln_novo_ev_nome_{fr_id}", "").strip()
@@ -116,18 +147,38 @@ def callback_salvar_lancamento(acao="inserir", id_lancamento=None):
             return
         id_evento_final = int(df_ev.iloc[0]['id'])
 
+    # EXECUÇÃO DO BANCO DE DADOS (Edição vs Inserção)
     if acao == "editar" and id_lancamento:
         status_final = "Pendente" if dt_venc_manual > dt_digitacao else status_tela
         val_realizado = valor if status_final == "Efetivado" else None
         dt_efetivacao = dt_venc_manual if status_final == "Efetivado" else None
-        GerenciadorBanco.executar_query("UPDATE lancamentos SET data_vencimento = %s, data_efetivacao = %s, valor_previsto = %s, valor_realizado = %s, id_evento = %s, status = %s, observacao = %s WHERE id = %s", (dt_venc_manual, dt_efetivacao, valor, val_realizado, id_evento_final, status_final, obs, id_lancamento), is_select=False)
+        GerenciadorBanco.executar_query(
+            "UPDATE lancamentos SET data_vencimento = %s, data_compra = %s, data_efetivacao = %s, valor_previsto = %s, valor_realizado = %s, id_evento = %s, status = %s, observacao = %s, id_cartao_credito = %s WHERE id = %s", 
+            (dt_venc_manual, dt_compra_final, dt_efetivacao, valor, val_realizado, id_evento_final, status_final, obs, id_cc_final, id_lancamento), 
+            is_select=False
+        )
     else:
         for i in range(parcelas):
-            data_venc = dt_venc_manual + timedelta(days=intervalo * i)
+            if modo_pag == "Cartão de Crédito" and id_cc_final and dt_compra_final:
+                data_compra_atual = dt_compra_final + timedelta(days=intervalo * i)
+                mes_base, ano_base = data_compra_atual.month, data_compra_atual.year
+                if data_compra_atual.day >= int(card_info['dia_fechamento']):
+                    mes_base += 1
+                    if mes_base > 12: mes_base, ano_base = 1, ano_base + 1
+                _, last_day = calendar.monthrange(ano_base, mes_base)
+                data_venc = date(ano_base, mes_base, min(int(card_info['dia_vencimento']), last_day))
+            else:
+                data_venc = dt_venc_manual + timedelta(days=intervalo * i)
+
             status_final = "Pendente" if data_venc > dt_digitacao else status_tela
             val_realizado = valor if status_final == "Efetivado" else None
             dt_efetivacao = data_venc if status_final == "Efetivado" else None
-            GerenciadorBanco.executar_query("INSERT INTO lancamentos (data_digitacao, data_vencimento, data_efetivacao, valor_previsto, valor_realizado, id_evento, id_classificacao, parcela_atual, total_parcelas, status, observacao) VALUES (%s, %s, %s, %s, %s, %s, (SELECT id_classificacao FROM eventos WHERE id=%s), %s, %s, %s, %s)", (dt_digitacao, data_venc, dt_efetivacao, valor, val_realizado, id_evento_final, id_evento_final, i+1, parcelas, status_final, obs), is_select=False)
+            
+            GerenciadorBanco.executar_query(
+                "INSERT INTO lancamentos (data_digitacao, data_compra, data_vencimento, data_efetivacao, valor_previsto, valor_realizado, id_evento, id_classificacao, parcela_atual, total_parcelas, status, observacao, id_cartao_credito) VALUES (%s, %s, %s, %s, %s, %s, %s, (SELECT id_classificacao FROM eventos WHERE id=%s), %s, %s, %s, %s, %s)", 
+                (dt_digitacao, dt_compra_final, data_venc, dt_efetivacao, valor, val_realizado, id_evento_final, id_evento_final, i+1, parcelas, status_final, obs, id_cc_final), 
+                is_select=False
+            )
     
     st.cache_data.clear() 
     st.session_state.msg_sucesso_cont = (acao == "inserir")
@@ -142,27 +193,79 @@ def callback_salvar_lancamento(acao="inserir", id_lancamento=None):
 def modal_formulario(acao="inserir", id_lancamento=None, dados_pre=None):
     fr_id = st.session_state.get("form_reset", 0)
     st.session_state["ln_form_reset"] = fr_id
-    df_eventos, df_class, _, _ = obter_auxiliares()
+    df_eventos, df_class, _, _, df_cc = obter_auxiliares()
     op_eventos = df_eventos['nome'].tolist() if not df_eventos.empty else []
     op_class = df_class['nome'].tolist() if not df_class.empty else []
+    op_cartoes = [f"{r['id']} - {r['nome']}" for _, r in df_cc.iterrows()] if not df_cc.empty else []
     
     v_data_dig = date.today()
+    
+    # Correção do Bug de Series: Substituição de `if dados:` por `if dados_pre is not None:`
     if f"ln_valor_{fr_id}" not in st.session_state:
         st.session_state[f"ln_valor_{fr_id}"] = float(dados_pre['valor_previsto']) if dados_pre is not None else 0.0
     if f"ln_data_venc_{fr_id}" not in st.session_state:
         st.session_state[f"ln_data_venc_{fr_id}"] = dados_pre['data_vencimento'] if dados_pre is not None else date.today()
         
     v_evento_idx = 0
-    if dados_pre is not None and dados_pre['nome_base_evento'] in op_eventos: v_evento_idx = op_eventos.index(dados_pre['nome_base_evento'])
+    if dados_pre is not None and dados_pre['nome_base_evento'] in op_eventos: 
+        v_evento_idx = op_eventos.index(dados_pre['nome_base_evento'])
 
-    st.number_input("Valor total previsto (R$):", min_value=0.0, step=0.01, format="%.2f", key=f"ln_valor_{fr_id}")
-    col_p, col_i, col_v, col_s = st.columns(4)
-    col_p.number_input("Total de parcelas:", min_value=1, max_value=240, step=1, disabled=(acao=="editar"), key=f"ln_parcelas_{fr_id}")
-    col_i.number_input("Intervalo de dias:", min_value=1, step=1, disabled=(acao=="editar"), key=f"ln_intervalo_{fr_id}", on_change=on_change_intervalo, args=(fr_id, v_data_dig))
-    col_v.date_input("Data de vencimento:", format="DD/MM/YYYY", key=f"ln_data_venc_{fr_id}")
-    travar_status = st.session_state[f"ln_data_venc_{fr_id}"] > v_data_dig
-    if travar_status: st.session_state[f"ln_status_{fr_id}"] = "Pendente"
-    col_s.selectbox("Status inicial:", ["Pendente", "Efetivado"], disabled=travar_status, key=f"ln_status_{fr_id}")
+    v_modo_pag_idx = 0
+    if dados_pre is not None and pd.notna(dados_pre['id_cartao_credito']): 
+        v_modo_pag_idx = 1
+    
+    c_pag, c_val = st.columns([1.5, 1])
+    modo_pagamento = c_pag.radio("Forma de Pagamento:", ["Simplificado", "Cartão de Crédito"], index=v_modo_pag_idx, horizontal=True, key=f"ln_modo_pag_{fr_id}")
+    c_val.number_input("Valor total previsto (R$):", min_value=0.0, step=0.01, format="%.2f", key=f"ln_valor_{fr_id}")
+    
+    st.markdown("<hr style='margin: 5px 0 15px 0;'>", unsafe_allow_html=True)
+
+    if modo_pagamento == "Cartão de Crédito":
+        if not op_cartoes:
+            st.warning("Nenhum cartão cadastrado. Cadastre no menu 'Cartões de Crédito' primeiro.")
+        else:
+            cc1, cc2 = st.columns(2)
+            idx_cc = 0
+            if dados_pre is not None and pd.notna(dados_pre['id_cartao_credito']):
+                str_cc = f"{int(dados_pre['id_cartao_credito'])} - {dados_pre['nome_cartao']}"
+                if str_cc in op_cartoes: idx_cc = op_cartoes.index(str_cc)
+
+            sel_cc = cc1.selectbox("Cartão utilizado:", op_cartoes, index=idx_cc, key=f"ln_cc_{fr_id}")
+            dt_compra_base = dados_pre['data_compra'] if dados_pre is not None and pd.notna(dados_pre['data_compra']) else date.today()
+            data_compra = cc2.date_input("Data exata da compra:", value=dt_compra_base, format="DD/MM/YYYY", key=f"ln_dt_compra_{fr_id}")
+            
+            id_cc_sel = int(sel_cc.split(" - ")[0])
+            card_info = df_cc[df_cc['id'] == id_cc_sel].iloc[0]
+            dia_fech, dia_venc = int(card_info['dia_fechamento']), int(card_info['dia_vencimento'])
+            
+            mes_base, ano_base = data_compra.month, data_compra.year
+            if data_compra.day >= dia_fech:
+                mes_base += 1
+                if mes_base > 12: mes_base, ano_base = 1, ano_base + 1
+                    
+            _, last_day = calendar.monthrange(ano_base, mes_base)
+            dt_venc_calculada = date(ano_base, mes_base, min(dia_venc, last_day))
+            
+            st.info(f"💳 O sistema identificou que esta compra entrará na fatura com vencimento base em **{dt_venc_calculada.strftime('%d/%m/%Y')}**.")
+            st.session_state[f"ln_data_venc_{fr_id}"] = dt_venc_calculada
+            st.session_state[f"ln_status_{fr_id}"] = "Pendente"
+            
+            col_p, col_i, col_v = st.columns(3)
+            col_p.number_input("Total de parcelas (Cartão):", min_value=1, max_value=240, step=1, disabled=(acao=="editar"), key=f"ln_parcelas_{fr_id}")
+            col_i.number_input("Intervalo de dias:", min_value=1, step=1, disabled=(acao=="editar"), key=f"ln_intervalo_{fr_id}")
+            col_v.selectbox("Status inicial:", ["Pendente"], disabled=True, key=f"ln_status_bloq")
+    else:
+        col_p, col_i, col_v, col_s = st.columns(4)
+        col_p.number_input("Total de parcelas:", min_value=1, max_value=240, step=1, disabled=(acao=="editar"), key=f"ln_parcelas_{fr_id}")
+        col_i.number_input("Intervalo de dias:", min_value=1, step=1, disabled=(acao=="editar"), key=f"ln_intervalo_{fr_id}", on_change=on_change_intervalo, args=(fr_id, v_data_dig))
+        
+        v_dt_venc_base = dados_pre['data_vencimento'] if dados_pre is not None else date.today()
+        if f"ln_data_venc_{fr_id}" not in st.session_state: st.session_state[f"ln_data_venc_{fr_id}"] = v_dt_venc_base
+            
+        col_v.date_input("Data de vencimento:", format="DD/MM/YYYY", key=f"ln_data_venc_{fr_id}")
+        travar_status = st.session_state[f"ln_data_venc_{fr_id}"] > v_data_dig
+        if travar_status: st.session_state[f"ln_status_{fr_id}"] = "Pendente"
+        col_s.selectbox("Status inicial:", ["Pendente", "Efetivado"], disabled=travar_status, key=f"ln_status_{fr_id}")
     
     st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
     st.radio("Origem do evento:", ["Selecionar evento", "Cadastrar novo"], horizontal=True, label_visibility="collapsed", key=f"ln_modo_ev_{fr_id}")
@@ -174,7 +277,7 @@ def modal_formulario(acao="inserir", id_lancamento=None, dados_pre=None):
             if evento_sel:
                 df_sync = GerenciadorBanco.executar_query("SELECT c.nome FROM classificacoes c INNER JOIN eventos e ON e.id_classificacao = c.id WHERE e.nome = %s LIMIT 1", (evento_sel,))
                 if not df_sync.empty: nome_cl_sync = df_sync.iloc[0]['nome']
-            st.text_input("Classificação vinculada:", value=nome_cl_sync, disabled=True, key=f"cl_sync_{fr_id}")
+            st.text_input("Classificação vinculada:", value=nome_cl_sync, disabled=True)
     else:
         with c_ev: st.text_input("Nome do novo evento:", key=f"ln_novo_ev_nome_{fr_id}")
         with c_cl: st.selectbox("Vincule a uma classificação:", op_class, key=f"ln_novo_ev_class_{fr_id}")
@@ -200,7 +303,7 @@ def modal_formulario(acao="inserir", id_lancamento=None, dados_pre=None):
 @st.dialog(":material/check_circle: Conciliar lançamento", width="small")
 def modal_baixa(id_l, ev_nome, v_orig):
     fr_id = st.session_state.get("form_reset", 0)
-    _, _, df_bancos, df_contas = obter_auxiliares()
+    _, _, df_bancos, df_contas, _ = obter_auxiliares()
     
     op_bancos = [f"{r['codigo']} - {r['nome']}" for _, r in df_bancos.iterrows()] if not df_bancos.empty else []
     op_contas = [f"{r['id']} - Banco {r['banco_codigo']} | Ag: {r['agencia_codigo']} | CC: {r['numero_conta']}" for _, r in df_contas.iterrows()] if not df_contas.empty else []
@@ -339,7 +442,7 @@ saldo_projetado = saldo_anterior + entradas_periodo - saidas_periodo
 cor_proj = "#20c997" if saldo_projetado >= 0 else "#dc3545"
 
 # ==========================================
-# 7. RENDERIZAÇÃO DA INTERFACE (Hierarquia Invertida)
+# 7. RENDERIZAÇÃO DA INTERFACE 
 # ==========================================
 # 7.1 CABEÇALHO SUPERIOR
 c_tit, c_fil, c_ins, c_mar = st.columns([5, 1.5, 1.5, 3])
@@ -347,9 +450,15 @@ with c_tit: st.markdown("<h3 class='titulo-pagina'><span class='material-symbols
 with c_fil:
     if st.button("Filtrar", type="tertiary", icon=":material/search:", use_container_width=True): st.session_state.show_filtros_lanc = not st.session_state.show_filtros_lanc; st.rerun()
 with c_ins:
-    if st.button("Inserir", type="primary", icon=":material/add:", use_container_width=True): st.session_state.modal_ativa, st.session_state.modal_id, st.session_state.modal_dados = "inserir", None, None; st.rerun()
+    if st.button("Inserir", type="primary", icon=":material/add:", use_container_width=True): 
+        st.session_state.modal_bx_id = None
+        st.session_state.modal_del_id = None
+        st.session_state.modal_ativa = "inserir"
+        st.session_state.modal_id = None
+        st.session_state.modal_dados = None
+        st.rerun()
 
-# 7.2 CARDS DE RESUMO (Ficam fixos visualmente no topo)
+# 7.2 CARDS DE RESUMO
 html_cards = f"""
 <div style="display: flex; gap: 15px; margin-bottom: 20px; margin-top: 5px;">
     <div style="flex: 1; background-color: #6c757d; color: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
@@ -372,7 +481,7 @@ html_cards = f"""
 """
 st.markdown(html_cards, unsafe_allow_html=True)
 
-# 7.3 PAINEL DE FILTROS (Abre entre os cards e a tabela)
+# 7.3 PAINEL DE FILTROS
 @st.fragment
 def renderizar_painel_filtros():
     with st.container(border=True):
@@ -389,7 +498,7 @@ def renderizar_painel_filtros():
         v_stat = f4.selectbox("Status:", op_stat, index=idx_stat)
         
         f5, f_check, f_btn = st.columns([5.5, 1.5, 1.5], vertical_alignment="bottom")
-        df_ev_list, _, _, _ = obter_auxiliares()
+        df_ev_list, _, _, _, _ = obter_auxiliares()
         lista_ev = df_ev_list['nome'].tolist() if not df_ev_list.empty else []
         v_evs = f5.multiselect("Eventos específicos:", options=lista_ev, default=st.session_state.f_ln_evs, placeholder="Todos os eventos")
         
@@ -430,12 +539,18 @@ st.markdown('''<div class="cabecalho-grid"><div style="display: flex;"><div styl
 if not df.empty:
     for _, row in df.iterrows():
         c = st.columns([1.0, 1.0, 1.1, 2.5, 1.2, 1.0, 1.0, 1.0, 0.5, 0.5, 0.5, 0.5], vertical_alignment="center")
+        
+        is_cartao = pd.notna(row['id_cartao_credito'])
+        is_pago = row['status'].lower() == 'efetivado'
+        is_bloqueado = is_cartao and is_pago
+
         cor_venc, peso_venc = "#1a2a40", "600"
         if row['status'].lower() == 'pendente':
             if row['data_vencimento'] < hoje: cor_venc, peso_venc = "#dc3545", "800"
             elif row['data_vencimento'] == hoje: cor_venc, peso_venc = "#fd7e14", "800"
 
-        c[0].markdown(f"<span style='font-size: 13px; white-space: nowrap;'>{row['data_digitacao'].strftime('%d/%m/%Y')}</span>", unsafe_allow_html=True)
+        dt_exibicao = row['data_compra'] if is_cartao and pd.notna(row['data_compra']) else row['data_digitacao']
+        c[0].markdown(f"<span style='font-size: 13px; white-space: nowrap;'>{dt_exibicao.strftime('%d/%m/%Y')}</span>", unsafe_allow_html=True)
         c[1].markdown(f"<span style='font-size: 13px; font-weight: {peso_venc}; color: {cor_venc}; white-space: nowrap;'>{row['data_vencimento'].strftime('%d/%m/%Y')}</span>", unsafe_allow_html=True)
         
         badge_s = "badge-efetivado" if row['status'].lower() == 'efetivado' else "badge-pendente"
@@ -445,7 +560,9 @@ if not df.empty:
         if pd.notna(icone_file) and icone_file != "Sem ícone":
             b64 = UtilitariosVisuais.obter_imagem_base64(os.path.join("Imagens", "Icones", icone_file))
             if b64: html_i = f"<img src='data:image/png;base64,{b64}' style='width: 52px; mix-blend-mode: multiply; margin-right: 15px;' />"
-        c[3].markdown(f"<div style='display: flex; align-items: center;'>{html_i}<div><span style='font-weight: 700; font-size: 15px;'>{row['evento_exibicao']}</span><br><span style='font-size: 12px; color: #6c757d;'>{row['classificacao']}</span></div></div>", unsafe_allow_html=True)
+            
+        nome_evento_final = f"💳 {row['nome_cartao']} - {row['evento_exibicao']}" if is_cartao else row['evento_exibicao']
+        c[3].markdown(f"<div style='display: flex; align-items: center;'>{html_i}<div><span style='font-weight: 700; font-size: 15px;'>{nome_evento_final}</span><br><span style='font-size: 12px; color: #6c757d;'>{row['classificacao']}</span></div></div>", unsafe_allow_html=True)
         
         badge_c = "badge-receita" if row['tipo'] == 'Receita' else "badge-despesa"
         c[4].markdown(f"<div style='text-align: center;'><span class='{badge_c}'>{row['categoria']}</span></div>", unsafe_allow_html=True)
@@ -454,15 +571,41 @@ if not df.empty:
         c[6].markdown(f"<div style='text-align: right; color:#b3391b; white-space: nowrap;'>{formatar_moeda(row['saida']) if row['saida']>0 else ''}</div>", unsafe_allow_html=True)
         c[7].markdown(f"<div style='text-align: right; font-weight: 700; white-space: nowrap;'>{formatar_moeda(row['saldo_acumulado'])}</div>", unsafe_allow_html=True)
         
-        if row['status'].lower() == 'pendente':
-            if c[8].button(" ", icon=":material/done_all:", key=f"bx_{row['id']}", use_container_width=True, help="Conciliar Baixa"):
-                st.session_state.modal_bx_id = row['id']; st.session_state.modal_bx_ev = row['evento_exibicao']; st.session_state.modal_bx_vlr = row['valor_previsto']; st.rerun()
-        if c[9].button(" ", icon=":material/edit:", key=f"ed_{row['id']}", use_container_width=True, help="Editar"):
-            st.session_state.modal_ativa, st.session_state.modal_id, st.session_state.modal_dados = "editar", row['id'], row; st.rerun()
-        if c[10].button(" ", icon=":material/content_copy:", key=f"dp_{row['id']}", use_container_width=True, help="Duplicar"):
-            st.session_state.modal_ativa, st.session_state.modal_id, st.session_state.modal_dados = "duplicar", None, row; st.rerun()
-        if c[11].button(" ", icon=":material/delete:", key=f"del_{row['id']}", use_container_width=True, help="Excluir"): 
-            st.session_state.modal_del_id = row['id']; st.session_state.modal_del_ev = row['evento_exibicao']; st.rerun()
+        if is_bloqueado:
+            for i in range(8, 12): c[i].markdown("<div style='text-align: center; font-size: 18px; color: #adb5bd; cursor: not-allowed;' title='Fatura Paga. Reabra a fatura para editar.'>🔒</div>", unsafe_allow_html=True)
+        else:
+            if row['status'].lower() == 'pendente':
+                if c[8].button(" ", icon=":material/done_all:", key=f"bx_{row['id']}", use_container_width=True, help="Conciliar Baixa"):
+                    st.session_state.modal_ativa = None
+                    st.session_state.modal_del_id = None
+                    st.session_state.modal_bx_id = row['id']
+                    st.session_state.modal_bx_ev = row['evento_exibicao']
+                    st.session_state.modal_bx_vlr = row['valor_previsto']
+                    st.rerun()
+                    
+            if c[9].button(" ", icon=":material/edit:", key=f"ed_{row['id']}", use_container_width=True, help="Editar"):
+                st.session_state.modal_bx_id = None
+                st.session_state.modal_del_id = None
+                st.session_state.modal_ativa = "editar"
+                st.session_state.modal_id = row['id']
+                st.session_state.modal_dados = row
+                st.rerun()
+                
+            if c[10].button(" ", icon=":material/content_copy:", key=f"dp_{row['id']}", use_container_width=True, help="Duplicar"):
+                st.session_state.modal_bx_id = None
+                st.session_state.modal_del_id = None
+                st.session_state.modal_ativa = "duplicar"
+                st.session_state.modal_id = None
+                st.session_state.modal_dados = row
+                st.rerun()
+                
+            if c[11].button(" ", icon=":material/delete:", key=f"del_{row['id']}", use_container_width=True, help="Excluir"): 
+                st.session_state.modal_ativa = None
+                st.session_state.modal_bx_id = None
+                st.session_state.modal_del_id = row['id']
+                st.session_state.modal_del_ev = row['evento_exibicao']
+                st.rerun()
+                
         st.markdown("<hr style='margin: 5px 0; border: 0; border-top: 1px solid #eee;'>", unsafe_allow_html=True)
 else: st.info("Nenhum lançamento encontrado neste período ou para o filtro selecionado.")
 
