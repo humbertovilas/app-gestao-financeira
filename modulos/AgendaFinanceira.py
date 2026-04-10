@@ -57,12 +57,14 @@ def carregar_dados(data_ini, data_fim):
         c.nome AS classificacao, c.icone, cat.nome AS categoria, cat.tipo,
         COALESCE(l.valor_realizado, l.valor_previsto) AS valor_final,
         l.observacao, l.valor_previsto, l.id_conta_bancaria,
-        l.id_cartao_credito, cc.nome AS nome_cartao
+        l.id_cartao_credito, cc.nome AS nome_cartao,
+        l.id_fornecedor, f.nome AS nome_fornecedor
     FROM lancamentos l
     INNER JOIN eventos e ON l.id_evento = e.id
     INNER JOIN classificacoes c ON l.id_classificacao = c.id
     INNER JOIN categorias cat ON c.id_categoria = cat.id
     LEFT JOIN cartoes_credito cc ON l.id_cartao_credito = cc.id
+    LEFT JOIN fornecedores f ON l.id_fornecedor = f.id
     WHERE l.data_vencimento >= %s AND l.data_vencimento <= %s
     ORDER BY l.data_vencimento ASC, l.id ASC
     """
@@ -74,11 +76,12 @@ def obter_auxiliares():
     df_cls = GerenciadorBanco.executar_query("SELECT id, nome FROM classificacoes ORDER BY nome ASC")
     df_bco = GerenciadorBanco.executar_query("SELECT codigo, nome FROM bancos ORDER BY nome ASC")
     df_cb = GerenciadorBanco.executar_query("SELECT id, numero_conta, agencia_codigo, banco_codigo FROM contas_bancarias ORDER BY id DESC")
+    df_forn = GerenciadorBanco.executar_query("SELECT id, nome FROM fornecedores ORDER BY nome ASC")
     try:
         df_cc = GerenciadorBanco.executar_query("SELECT id, nome, dia_fechamento, dia_vencimento FROM cartoes_credito ORDER BY nome ASC")
     except:
         df_cc = pd.DataFrame(columns=['id', 'nome', 'dia_fechamento', 'dia_vencimento'])
-    return df_ev, df_cls, df_bco, df_cb, df_cc
+    return df_ev, df_cls, df_bco, df_cb, df_cc, df_forn
 
 # ==========================================
 # 3. CALLBACKS DE NEGÓCIO
@@ -101,10 +104,11 @@ def callback_salvar_lancamento(acao="inserir", id_lancamento=None):
         st.session_state.msg_erro = "O valor deve ser maior que zero."
         return
 
-    # LÓGICA DE CARTÃO DE CRÉDITO E INTERVALOS
+    # LÓGICA DE CARTÃO DE CRÉDITO, FORNECEDOR E INTERVALOS
     modo_pag = st.session_state.get(f"ln_modo_pag_{fr_id}", "Simplificado")
     id_cc_final = None
     dt_compra_final = None
+    id_fornecedor_final = None
     dt_venc_manual = st.session_state.get(f"ln_data_venc_{fr_id}")
 
     if modo_pag == "Cartão de Crédito":
@@ -114,7 +118,7 @@ def callback_salvar_lancamento(acao="inserir", id_lancamento=None):
         
         # Recupera as informações do cartão selecionado para calcular vencimentos
         if id_cc_final:
-            _, _, _, _, df_cc = obter_auxiliares()
+            _, _, _, _, df_cc, _ = obter_auxiliares()
             card_info = df_cc[df_cc['id'] == id_cc_final].iloc[0]
             
             if dt_compra_final:
@@ -125,6 +129,28 @@ def callback_salvar_lancamento(acao="inserir", id_lancamento=None):
                 _, last_day = calendar.monthrange(ano_base, mes_base)
                 dia_venc_real = min(int(card_info['dia_vencimento']), last_day)
                 dt_venc_manual = date(ano_base, mes_base, dia_venc_real)
+
+        # Lógica de Fornecedor
+        modo_forn = st.session_state.get(f"ln_modo_forn_{fr_id}", "Selecionar fornecedor")
+        if modo_forn == "Cadastrar novo":
+            nome_forn_novo = st.session_state.get(f"ln_novo_forn_{fr_id}", "").strip()
+            if not nome_forn_novo:
+                st.session_state.msg_erro = "Preencha o nome do novo fornecedor."
+                return
+            df_check_forn = GerenciadorBanco.executar_query("SELECT id FROM fornecedores WHERE nome ILIKE %s", (nome_forn_novo,))
+            if not df_check_forn.empty:
+                id_fornecedor_final = int(df_check_forn.iloc[0]['id'])
+            else:
+                GerenciadorBanco.executar_query("INSERT INTO fornecedores (nome) VALUES (%s)", (nome_forn_novo,), is_select=False)
+                df_f = GerenciadorBanco.executar_query("SELECT id FROM fornecedores WHERE nome = %s ORDER BY id DESC LIMIT 1", (nome_forn_novo,))
+                id_fornecedor_final = int(df_f.iloc[0]['id'])
+        else:
+            forn_sel = st.session_state.get(f"ln_forn_sel_{fr_id}")
+            if forn_sel:
+                id_fornecedor_final = int(forn_sel.split(" - ")[0])
+            else:
+                st.session_state.msg_erro = "Selecione um fornecedor."
+                return
 
     # RESOLUÇÃO DO EVENTO (Vinculação ou Criação)
     id_evento_final = None
@@ -153,8 +179,8 @@ def callback_salvar_lancamento(acao="inserir", id_lancamento=None):
         val_realizado = valor if status_final == "Efetivado" else None
         dt_efetivacao = dt_venc_manual if status_final == "Efetivado" else None
         GerenciadorBanco.executar_query(
-            "UPDATE lancamentos SET data_vencimento = %s, data_compra = %s, data_efetivacao = %s, valor_previsto = %s, valor_realizado = %s, id_evento = %s, status = %s, observacao = %s, id_cartao_credito = %s WHERE id = %s", 
-            (dt_venc_manual, dt_compra_final, dt_efetivacao, valor, val_realizado, id_evento_final, status_final, obs, id_cc_final, id_lancamento), 
+            "UPDATE lancamentos SET data_vencimento = %s, data_compra = %s, data_efetivacao = %s, valor_previsto = %s, valor_realizado = %s, id_evento = %s, status = %s, observacao = %s, id_cartao_credito = %s, id_fornecedor = %s WHERE id = %s", 
+            (dt_venc_manual, dt_compra_final, dt_efetivacao, valor, val_realizado, id_evento_final, status_final, obs, id_cc_final, id_fornecedor_final, id_lancamento), 
             is_select=False
         )
     else:
@@ -175,8 +201,8 @@ def callback_salvar_lancamento(acao="inserir", id_lancamento=None):
             dt_efetivacao = data_venc if status_final == "Efetivado" else None
             
             GerenciadorBanco.executar_query(
-                "INSERT INTO lancamentos (data_digitacao, data_compra, data_vencimento, data_efetivacao, valor_previsto, valor_realizado, id_evento, id_classificacao, parcela_atual, total_parcelas, status, observacao, id_cartao_credito) VALUES (%s, %s, %s, %s, %s, %s, %s, (SELECT id_classificacao FROM eventos WHERE id=%s), %s, %s, %s, %s, %s)", 
-                (dt_digitacao, dt_compra_final, data_venc, dt_efetivacao, valor, val_realizado, id_evento_final, id_evento_final, i+1, parcelas, status_final, obs, id_cc_final), 
+                "INSERT INTO lancamentos (data_digitacao, data_compra, data_vencimento, data_efetivacao, valor_previsto, valor_realizado, id_evento, id_classificacao, parcela_atual, total_parcelas, status, observacao, id_cartao_credito, id_fornecedor) VALUES (%s, %s, %s, %s, %s, %s, %s, (SELECT id_classificacao FROM eventos WHERE id=%s), %s, %s, %s, %s, %s, %s)", 
+                (dt_digitacao, dt_compra_final, data_venc, dt_efetivacao, valor, val_realizado, id_evento_final, id_evento_final, i+1, parcelas, status_final, obs, id_cc_final, id_fornecedor_final), 
                 is_select=False
             )
     
@@ -193,14 +219,14 @@ def callback_salvar_lancamento(acao="inserir", id_lancamento=None):
 def modal_formulario(acao="inserir", id_lancamento=None, dados_pre=None):
     fr_id = st.session_state.get("form_reset", 0)
     st.session_state["ln_form_reset"] = fr_id
-    df_eventos, df_class, _, _, df_cc = obter_auxiliares()
+    df_eventos, df_class, _, _, df_cc, df_forn = obter_auxiliares()
     op_eventos = df_eventos['nome'].tolist() if not df_eventos.empty else []
     op_class = df_class['nome'].tolist() if not df_class.empty else []
     op_cartoes = [f"{r['id']} - {r['nome']}" for _, r in df_cc.iterrows()] if not df_cc.empty else []
+    op_fornecedores = [f"{r['id']} - {r['nome']}" for _, r in df_forn.iterrows()] if not df_forn.empty else []
     
     v_data_dig = date.today()
     
-    # Correção do Bug de Series: Substituição de `if dados:` por `if dados_pre is not None:`
     if f"ln_valor_{fr_id}" not in st.session_state:
         st.session_state[f"ln_valor_{fr_id}"] = float(dados_pre['valor_previsto']) if dados_pre is not None else 0.0
     if f"ln_data_venc_{fr_id}" not in st.session_state:
@@ -254,6 +280,19 @@ def modal_formulario(acao="inserir", id_lancamento=None, dados_pre=None):
             col_p.number_input("Total de parcelas (Cartão):", min_value=1, max_value=240, step=1, disabled=(acao=="editar"), key=f"ln_parcelas_{fr_id}")
             col_i.number_input("Intervalo de dias:", min_value=1, step=1, disabled=(acao=="editar"), key=f"ln_intervalo_{fr_id}")
             col_v.selectbox("Status inicial:", ["Pendente"], disabled=True, key=f"ln_status_bloq")
+
+            st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
+            st.radio("Origem do fornecedor:", ["Selecionar fornecedor", "Cadastrar novo"], horizontal=True, label_visibility="collapsed", key=f"ln_modo_forn_{fr_id}")
+            
+            if st.session_state.get(f"ln_modo_forn_{fr_id}", "Selecionar fornecedor") == "Selecionar fornecedor":
+                idx_forn = 0
+                if dados_pre is not None and pd.notna(dados_pre['id_fornecedor']):
+                    str_forn = f"{int(dados_pre['id_fornecedor'])} - {dados_pre['nome_fornecedor']}"
+                    if str_forn in op_fornecedores: idx_forn = op_fornecedores.index(str_forn)
+                st.selectbox("Fornecedor selecionado:", op_fornecedores, index=idx_forn, key=f"ln_forn_sel_{fr_id}")
+            else:
+                st.text_input("Nome do novo fornecedor:", key=f"ln_novo_forn_{fr_id}")
+
     else:
         col_p, col_i, col_v, col_s = st.columns(4)
         col_p.number_input("Total de parcelas:", min_value=1, max_value=240, step=1, disabled=(acao=="editar"), key=f"ln_parcelas_{fr_id}")
@@ -303,7 +342,7 @@ def modal_formulario(acao="inserir", id_lancamento=None, dados_pre=None):
 @st.dialog(":material/check_circle: Conciliar lançamento", width="small")
 def modal_baixa(id_l, ev_nome, v_orig):
     fr_id = st.session_state.get("form_reset", 0)
-    _, _, df_bancos, df_contas, _ = obter_auxiliares()
+    _, _, df_bancos, df_contas, _, _ = obter_auxiliares()
     
     op_bancos = [f"{r['codigo']} - {r['nome']}" for _, r in df_bancos.iterrows()] if not df_bancos.empty else []
     op_contas = [f"{r['id']} - Banco {r['banco_codigo']} | Ag: {r['agencia_codigo']} | CC: {r['numero_conta']}" for _, r in df_contas.iterrows()] if not df_contas.empty else []
@@ -498,7 +537,7 @@ def renderizar_painel_filtros():
         v_stat = f4.selectbox("Status:", op_stat, index=idx_stat)
         
         f5, f_check, f_btn = st.columns([5.5, 1.5, 1.5], vertical_alignment="bottom")
-        df_ev_list, _, _, _, _ = obter_auxiliares()
+        df_ev_list, _, _, _, _, _ = obter_auxiliares()
         lista_ev = df_ev_list['nome'].tolist() if not df_ev_list.empty else []
         v_evs = f5.multiselect("Eventos específicos:", options=lista_ev, default=st.session_state.f_ln_evs, placeholder="Todos os eventos")
         
@@ -562,6 +601,9 @@ if not df.empty:
             if b64: html_i = f"<img src='data:image/png;base64,{b64}' style='width: 52px; mix-blend-mode: multiply; margin-right: 15px;' />"
             
         nome_evento_final = f"💳 {row['nome_cartao']} - {row['evento_exibicao']}" if is_cartao else row['evento_exibicao']
+        if is_cartao and pd.notna(row['nome_fornecedor']):
+            nome_evento_final += f"<br><span style='font-size: 11px; color: #adb5bd;'>Fornecedor: {row['nome_fornecedor']}</span>"
+
         c[3].markdown(f"<div style='display: flex; align-items: center;'>{html_i}<div><span style='font-weight: 700; font-size: 15px;'>{nome_evento_final}</span><br><span style='font-size: 12px; color: #6c757d;'>{row['classificacao']}</span></div></div>", unsafe_allow_html=True)
         
         badge_c = "badge-receita" if row['tipo'] == 'Receita' else "badge-despesa"

@@ -99,7 +99,11 @@ def iniciar_sistema():
                 unsafe_allow_html=True
             )
             
-    GerenciadorBanco.inicializar_banco()
+    # Única chamada de inicialização. Com a nova arquitetura, isso garante a tabela.
+    if "banco_verificado" not in st.session_state:
+        GerenciadorBanco.inicializar_banco()
+        st.session_state.banco_verificado = True
+        
     UtilitariosVisuais.aplicar_configuracoes_ui()
     espaco_carregamento.empty()
     
@@ -122,7 +126,6 @@ def iniciar_sistema():
         """
         st.sidebar.markdown(html_sidebar_header, unsafe_allow_html=True)
 
-        # A ÂNCORA INVISÍVEL (O CSS joga o botão de baixo pro rodapé)
         st.sidebar.markdown('<div id="ancora-sair"></div>', unsafe_allow_html=True)
         if st.sidebar.button("Sair do sistema", icon=":material/logout:", use_container_width=True):
             st.session_state.autenticado = False
@@ -142,7 +145,8 @@ def iniciar_sistema():
         paginas_auxiliares = [
             st.Page("modulos/Categoria.py", title="Categorias", icon=":material/folder:"),
             st.Page("modulos/Classificacao.py", title="Classificações", icon=":material/account_tree:"),
-            st.Page("modulos/Banco.py", title="Bancos", icon=":material/museum:")
+            st.Page("modulos/Banco.py", title="Bancos", icon=":material/museum:"),
+            st.Page("modulos/CadastroFornecedor.py", title="Fornecedores", icon=":material/store:")
         ]
         
         dicionario_paginas = {

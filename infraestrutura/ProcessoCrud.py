@@ -17,10 +17,12 @@ class GerenciadorBanco:
         return psycopg2.connect(st.secrets["DATABASE_URL"])
 
     @staticmethod
-    @st.cache_resource(show_spinner=False)
     def inicializar_banco():
-        def executar_criacao_tabelas(conexao):
-            cursor = conexao.cursor()
+        # UTILIZA CONEXÃO DEDICADA COM AUTOCOMMIT PARA IGNORAR BLOQUEIOS DE TRANSAÇÃO (CACHE BYPASS)
+        try:
+            conn_setup = psycopg2.connect(st.secrets["DATABASE_URL"])
+            conn_setup.autocommit = True
+            cursor = conn_setup.cursor()
             
             # 1. TABELAS DE AUXÍLIO
             cursor.execute('CREATE TABLE IF NOT EXISTS categorias (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, tipo TEXT NOT NULL)')
@@ -28,6 +30,9 @@ class GerenciadorBanco:
             cursor.execute('ALTER TABLE classificacoes ADD COLUMN IF NOT EXISTS icone TEXT')
             cursor.execute('CREATE TABLE IF NOT EXISTS eventos (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, id_classificacao INTEGER NOT NULL, FOREIGN KEY (id_classificacao) REFERENCES classificacoes (id))')
             cursor.execute('CREATE TABLE IF NOT EXISTS usuarios (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, email TEXT UNIQUE NOT NULL, senha TEXT NOT NULL, perfil TEXT NOT NULL, ativo BOOLEAN DEFAULT TRUE)')
+            
+            # CRIAÇÃO GARANTIDA FORNECEDORES
+            cursor.execute('CREATE TABLE IF NOT EXISTS fornecedores (id SERIAL PRIMARY KEY, nome TEXT NOT NULL)')
 
             # 2. TABELAS BANCÁRIAS
             cursor.execute('CREATE TABLE IF NOT EXISTS bancos (codigo VARCHAR(10) PRIMARY KEY, nome VARCHAR(150))')
@@ -36,7 +41,7 @@ class GerenciadorBanco:
             # 3. TABELA DE CARTÕES DE CRÉDITO
             cursor.execute('CREATE TABLE IF NOT EXISTS cartoes_credito (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, limite_total NUMERIC(15,2) NOT NULL, dia_fechamento INTEGER NOT NULL, dia_vencimento INTEGER NOT NULL)')
 
-            # 4. TABELA DE LANÇAMENTOS
+            # 4. TABELA DE LANÇAMENTOS E ALTERAÇÕES
             cursor.execute('''CREATE TABLE IF NOT EXISTS lancamentos 
                               (id SERIAL PRIMARY KEY, data_digitacao DATE DEFAULT CURRENT_DATE, data_vencimento DATE NOT NULL, 
                                data_efetivacao DATE, valor_previsto NUMERIC(15,2) NOT NULL, valor_realizado NUMERIC(15,2), 
@@ -45,35 +50,34 @@ class GerenciadorBanco:
                                id_conta_bancaria INTEGER, id_cartao_credito INTEGER, data_compra DATE,
                                FOREIGN KEY (id_evento) REFERENCES eventos (id),
                                FOREIGN KEY (id_classificacao) REFERENCES classificacoes (id))''')
+            
+            cursor.execute('ALTER TABLE lancamentos ADD COLUMN IF NOT EXISTS id_fornecedor INTEGER REFERENCES fornecedores(id)')
 
             # 5. ÍNDICES DE ALTA PERFORMANCE
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_cat_nome ON categorias (nome)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_cls_nome ON classificacoes (nome)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_ev_nome ON eventos (nome)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_forn_nome ON fornecedores (nome)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_lanc_vencimento ON lancamentos (data_vencimento)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_lanc_cartao ON lancamentos (id_cartao_credito)")
-
-            conexao.commit()
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_lanc_forn ON lancamentos (id_fornecedor)")
             
             # CARGA DE BANCOS INICIAIS
-            cursor.execute("SELECT count(codigo) as total FROM bancos")
+            cursor.execute("SELECT count(codigo) FROM bancos")
             if cursor.fetchone()[0] == 0:
                 bancos = [('001','Banco do Brasil'),('104','Caixa'),('033','Santander'),('341','Itaú'),('237','Bradesco'),('260','Nubank')]
                 for c, n in bancos: cursor.execute("INSERT INTO bancos (codigo, nome) VALUES (%s, %s)", (c, n))
-                conexao.commit()
-
-        try:
-            conn = GerenciadorBanco.obter_conexao()
-            executar_criacao_tabelas(conn)
-        except Exception:
-            st.cache_resource.clear()
-            executar_criacao_tabelas(GerenciadorBanco.obter_conexao())
+            
+            conn_setup.close()
+        except Exception as e:
+            st.error(f"Erro crítico ao inicializar banco de dados: {e}")
 
     @staticmethod
     def executar_query(query, params=(), is_select=True):
         try:
             conn = GerenciadorBanco.obter_conexao()
-            if is_select: return pd.read_sql_query(query, conn, params=params)
+            if is_select: 
+                return pd.read_sql_query(query, conn, params=params)
             else:
                 cursor = conn.cursor()
                 cursor.execute(query, params)

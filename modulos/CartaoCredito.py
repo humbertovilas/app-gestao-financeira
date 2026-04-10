@@ -28,7 +28,7 @@ if 'f_cc_busca' not in st.session_state: st.session_state.f_cc_busca = ""
 class PDF_Fatura(FPDF):
     def header(self):
         self.set_font('Arial', 'B', 16)
-        self.cell(0, 10, 'SISTEMA FINANCEIRO - FATURA DETALHADA', 0, 1, 'C')
+        self.cell(0, 10, 'Sistema financeiro - Fatura detalhada', 0, 1, 'C')
         self.ln(5)
 
     def footer(self):
@@ -46,25 +46,29 @@ def gerar_pdf_bytes(df_detalhes, nome_cartao, vencimento, total):
     pdf.cell(0, 10, f"Vencimento: {vencimento.strftime('%d/%m/%Y')}", 0, 1)
     pdf.ln(5)
 
-    # Tabela de Itens (Cabeçalhos Ajustados conforme Solicitação)
+    # Tabela de Itens (Nova ordem: Data, Fornecedor, Evento, Categoria, Valor)
     pdf.set_fill_color(240, 240, 240)
-    pdf.set_font('Arial', 'B', 10)
-    pdf.cell(30, 10, "Data da Compra", 1, 0, 'C', True)
-    pdf.cell(80, 10, "Evento", 1, 0, 'L', True)
-    pdf.cell(40, 10, "Categoria", 1, 0, 'C', True)
-    pdf.cell(40, 10, "Valor da Parcela", 1, 1, 'R', True)
+    pdf.set_font('Arial', 'B', 9)
+    pdf.cell(25, 10, "Data compra", 1, 0, 'C', True)
+    pdf.cell(45, 10, "Fornecedor", 1, 0, 'L', True)
+    pdf.cell(55, 10, "Evento", 1, 0, 'L', True)
+    pdf.cell(35, 10, "Categoria", 1, 0, 'C', True)
+    pdf.cell(30, 10, "Valor (R$)", 1, 1, 'R', True)
 
-    pdf.set_font('Arial', '', 10)
+    pdf.set_font('Arial', '', 8)
     for _, row in df_detalhes.iterrows():
         dt = row['data_compra'].strftime('%d/%m/%Y') if pd.notna(row['data_compra']) else "-"
-        pdf.cell(30, 10, dt, 1, 0, 'C')
-        pdf.cell(80, 10, str(row['descricao'])[:40], 1, 0, 'L')
-        pdf.cell(40, 10, str(row['categoria'])[:20], 1, 0, 'C')
-        pdf.cell(40, 10, f"{row['valor_previsto']:,.2f}", 1, 1, 'R')
+        forn = str(row['fornecedor'])[:25] if pd.notna(row['fornecedor']) else "-"
+        
+        pdf.cell(25, 10, dt, 1, 0, 'C')
+        pdf.cell(45, 10, forn, 1, 0, 'L')
+        pdf.cell(55, 10, str(row['descricao'])[:35], 1, 0, 'L')
+        pdf.cell(35, 10, str(row['categoria'])[:20], 1, 0, 'C')
+        pdf.cell(30, 10, f"{row['valor_previsto']:,.2f}", 1, 1, 'R')
 
     pdf.ln(5)
     pdf.set_font('Arial', 'B', 12)
-    pdf.cell(150, 10, "TOTAL DA FATURA:", 0, 0, 'R')
+    pdf.cell(150, 10, "Total da fatura:", 0, 0, 'R')
     pdf.cell(40, 10, f"R$ {total:,.2f}", 0, 1, 'R')
     
     return pdf.output()
@@ -88,10 +92,11 @@ def carregar_resumo_faturas(id_cartao):
 def carregar_detalhes_fatura(id_cc, vencimento):
     query = """
     SELECT l.data_compra, e.nome || ' (' || l.parcela_atual || '/' || l.total_parcelas || ')' as descricao, 
-           l.valor_previsto, c.nome as categoria
+           l.valor_previsto, c.nome as categoria, f.nome as fornecedor
     FROM lancamentos l
     INNER JOIN eventos e ON l.id_evento = e.id
     INNER JOIN classificacoes c ON l.id_classificacao = c.id
+    LEFT JOIN fornecedores f ON l.id_fornecedor = f.id
     WHERE l.id_cartao_credito = %s AND l.data_vencimento = %s
     ORDER BY l.data_compra ASC, l.id ASC
     """
@@ -126,7 +131,7 @@ def executar_reabertura_fatura(id_cartao, vencimento):
 # ==========================================
 # 4. MODAIS DE INTERAÇÃO 
 # ==========================================
-@st.dialog(":material/credit_card: Cartão de Crédito", width="small")
+@st.dialog(":material/credit_card: Cartão de crédito", width="small")
 def modal_formulario(acao="inserir", id_cc=None, dados_pre=None):
     fr_id = st.session_state.get("form_reset", 0)
     
@@ -135,12 +140,12 @@ def modal_formulario(acao="inserir", id_cc=None, dados_pre=None):
     v_fechamento = int(dados_pre['dia_fechamento']) if dados_pre is not None else 1
     v_vencimento = int(dados_pre['dia_vencimento']) if dados_pre is not None else 10
 
-    st.text_input("Nome do Cartão (Ex: Nubank, Itaú):", value=v_nome, key=f"cc_nome_{fr_id}")
-    st.number_input("Limite Total (R$):", value=v_limite, min_value=0.0, step=100.0, format="%.2f", key=f"cc_limite_{fr_id}")
+    st.text_input("Nome do cartão (Ex: Nubank, Itaú):", value=v_nome, key=f"cc_nome_{fr_id}")
+    st.number_input("Limite total (R$):", value=v_limite, min_value=0.0, step=100.0, format="%.2f", key=f"cc_limite_{fr_id}")
     
     c1, c2 = st.columns(2)
-    c1.number_input("Dia de Fechamento:", value=v_fechamento, min_value=1, max_value=31, step=1, key=f"cc_f_{fr_id}")
-    c2.number_input("Dia de Vencimento:", value=v_vencimento, min_value=1, max_value=31, step=1, key=f"cc_v_{fr_id}")
+    c1.number_input("Dia de fechamento:", value=v_fechamento, min_value=1, max_value=31, step=1, key=f"cc_f_{fr_id}")
+    c2.number_input("Dia de vencimento:", value=v_vencimento, min_value=1, max_value=31, step=1, key=f"cc_v_{fr_id}")
 
     st.markdown("<br>", unsafe_allow_html=True)
     b_sal, b_fec = st.columns(2)
@@ -177,7 +182,7 @@ def modal_formulario(acao="inserir", id_cc=None, dados_pre=None):
     elif st.session_state.get("msg_erro"):
         st.toast(st.session_state.msg_erro, icon="❌"); st.session_state.msg_erro = ""
 
-@st.dialog(":material/delete: Excluir Cartão", width="small")
+@st.dialog(":material/delete: Excluir cartão", width="small")
 def modal_exclusao(id_cc, nome_cc):
     vinc = GerenciadorBanco.executar_query("SELECT id FROM lancamentos WHERE id_cartao_credito = %s LIMIT 1", (id_cc,))
     
@@ -202,9 +207,9 @@ def modal_exclusao(id_cc, nome_cc):
                 st.session_state.modal_del_id = None
                 st.rerun()
 
-@st.dialog(":material/receipt_long: Gestão de Faturas", width="large")
+@st.dialog(":material/receipt_long: Gestão de faturas", width="large")
 def modal_faturas(id_cartao, nome_cartao):
-    st.markdown(f"#### Faturas do Cartão: {nome_cartao}")
+    st.markdown(f"#### Faturas do cartão: {nome_cartao}")
     df_f = carregar_resumo_faturas(id_cartao)
     
     if df_f.empty:
@@ -227,39 +232,41 @@ def modal_faturas(id_cartao, nome_cartao):
                     df_tela = df_det.copy()
                     df_tela['data_compra'] = pd.to_datetime(df_tela['data_compra']).dt.strftime('%d/%m/%Y').fillna("-")
                     df_tela['valor_previsto'] = df_tela['valor_previsto'].apply(lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+                    df_tela['fornecedor'] = df_tela['fornecedor'].fillna("-")
                     
                     df_tela = df_tela.rename(columns={
-                        'data_compra': 'Data da Compra',
+                        'data_compra': 'Data da compra',
                         'descricao': 'Evento',
+                        'fornecedor': 'Fornecedor',
                         'categoria': 'Categoria',
-                        'valor_previsto': 'Valor da Parcela'
+                        'valor_previsto': 'Valor da parcela'
                     })
                     
-                    # Organiza a ordem das colunas
-                    df_tela = df_tela[['Data da Compra', 'Evento', 'Categoria', 'Valor da Parcela']]
+                    # Organiza a ordem das colunas: Data -> Fornecedor -> Evento
+                    df_tela = df_tela[['Data da compra', 'Fornecedor', 'Evento', 'Categoria', 'Valor da parcela']]
                     
-                    # Exibe no Streamlit com os nomes alterados
+                    # Exibe no Streamlit
                     st.dataframe(df_tela, hide_index=True, use_container_width=True)
                 
                 # 3. Gerador de PDF
                 pdf_output = gerar_pdf_bytes(df_det, nome_cartao, venc, total_f)
-                st.download_button(label="📥 Baixar Fatura Detalhada (PDF)", data=bytes(pdf_output), file_name=f"Fatura_{nome_cartao}_{venc}.pdf", mime="application/pdf", key=f"pdf_{venc}_{id_cartao}")
+                st.download_button(label="📥 Baixar fatura detalhada (PDF)", data=bytes(pdf_output), file_name=f"Fatura_{nome_cartao}_{venc}.pdf", mime="application/pdf", key=f"pdf_{venc}_{id_cartao}")
                 
                 # 4. Ações de Pagamento
                 st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
                 if status_f == 'Pendente':
                     st.warning("Esta fatura ainda está aberta ou aguardando pagamento.")
-                    if st.button("Pagar Fatura Total", type="primary", key=f"pay_{venc}_{id_cartao}"):
+                    if st.button("Pagar fatura total", type="primary", key=f"pay_{venc}_{id_cartao}"):
                         executar_pagamento_fatura(id_cartao, venc)
                         st.rerun()
                 else:
                     st.success("Esta fatura já consta como PAGA. (Lançamentos bloqueados para edição na Agenda Financeira).")
-                    if st.button("Reabrir Fatura (Estornar)", type="secondary", key=f"open_{venc}_{id_cartao}"):
+                    if st.button("Reabrir fatura (estornar)", type="secondary", key=f"open_{venc}_{id_cartao}"):
                         executar_reabertura_fatura(id_cartao, venc)
                         st.rerun()
                     
     st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("Fechar Painel", use_container_width=True):
+    if st.button("Fechar painel", use_container_width=True):
         st.session_state.modal_fat_id = None
         st.rerun()
 
@@ -267,7 +274,7 @@ def modal_faturas(id_cartao, nome_cartao):
 # 5. INTERFACE PRINCIPAL
 # ==========================================
 c_tit, c_fil, c_ins, c_mar = st.columns([5, 1.5, 1.5, 3])
-with c_tit: st.markdown("<h3 class='titulo-pagina'><span class='material-symbols-rounded'>credit_card</span> Cartões de Crédito</h3>", unsafe_allow_html=True)
+with c_tit: st.markdown("<h3 class='titulo-pagina'><span class='material-symbols-rounded'>credit_card</span> Cartões de crédito</h3>", unsafe_allow_html=True)
 with c_fil:
     if st.button("Filtrar", type="tertiary", icon=":material/search:", use_container_width=True):
         st.session_state.show_filtros_cc = not st.session_state.show_filtros_cc; st.rerun()
