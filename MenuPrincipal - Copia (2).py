@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import hashlib
 from infraestrutura.ProcessoCrud import UtilitariosVisuais, GerenciadorBanco
 
@@ -39,22 +38,14 @@ def realizar_logoff():
     st.rerun()
 
 # ==========================================
-# LOGOTIPO SVG BLINDADO (Nunca falha)
-# ==========================================
-logo_svg = """
-<svg width="36" height="36" viewBox="0 0 24 24" fill="#20c997" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle;">
-    <path d="M11 2v9h9c-.5 5-5 9-9 9s-9-4.5-9-9 4-9 9-9zm2 0c4.5.5 8.5 4.5 9 9h-9V2z"/>
-</svg>
-"""
-
-# ==========================================
 # PÁGINAS CORE (LOGIN E HOME)
 # ==========================================
 def pagina_login():
+    st.markdown("""<style>[data-testid="stSidebar"], [data-testid="collapsedControl"] {display: none !important;}</style>""", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([3, 4, 3])
     with c2:
         st.markdown("<br><br><br>", unsafe_allow_html=True)
-        html_marca = f"""<div style="display: flex; justify-content: center; align-items: center; gap: 12px;">{logo_svg}<span style="color: #1a2a40; font-size: 38px; font-weight: 700;">Gestão Financeira</span></div>"""
+        html_marca = """<div style="display: flex; justify-content: center; align-items: center; gap: 12px;"><span class="material-symbols-rounded" style="color: #20c997; font-size: 46px;">pie_chart</span><span style="color: #1a2a40; font-size: 38px; font-weight: 700;">Gestão Financeira</span></div>"""
         st.markdown(html_marca, unsafe_allow_html=True)
         st.markdown("<p style='text-align: center; color: #6c757d; font-size: 16px; margin-bottom: 30px;'>Acesso restrito e corporativo</p>", unsafe_allow_html=True)
         
@@ -78,12 +69,16 @@ def pagina_home():
         st.markdown("<h4 style='text-align: center; color: #6c757d; font-weight: 400;'>Bem-vindo ao seu painel de Gestão Financeira.</h4>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center; color: #adb5bd; margin-top: 15px;'>O sistema está pronto. Utilize o <b>menu superior</b> para navegar.</p>", unsafe_allow_html=True)
         st.markdown("<hr style='margin: 40px 0; border-top: 1px solid #eee;'>", unsafe_allow_html=True)
+        
+        ca, cb = st.columns(2)
+        with ca: st.markdown("<div style='text-align: center; padding: 15px; border: 1px solid #dee2e6; border-radius: 8px;'><span class='material-symbols-rounded' style='font-size: 46px; color: #20c997;'>calendar_month</span><br><b style='font-size: 18px; color: #1a2a40;'>Agenda Financeira</b></div>", unsafe_allow_html=True)
+        with cb: st.markdown("<div style='text-align: center; padding: 15px; border: 1px solid #dee2e6; border-radius: 8px;'><span class='material-symbols-rounded' style='font-size: 46px; color: #20c997;'>credit_card</span><br><b style='font-size: 18px; color: #1a2a40;'>Cartões de Crédito</b></div>", unsafe_allow_html=True)
 
 # ==========================================
-# MAPEAMENTO NATIVO DO ROTEADOR
+# MAPEAMENTO NATIVO DO ROTEADOR (ST.PAGE)
 # ==========================================
-pg_login = st.Page(pagina_login, title="Login")
-pg_home = st.Page(pagina_home, title="Página Inicial")
+pg_login = st.Page(pagina_login, title="Login", default=True)
+pg_home = st.Page(pagina_home, title="Página Inicial", default=True)
 pg_agenda = st.Page("modulos/AgendaFinanceira.py", title="Agenda financeira")
 pg_cartoes = st.Page("modulos/CartaoCredito.py", title="Cartões de crédito")
 pg_forn = st.Page("modulos/CadastroFornecedor.py", title="Fornecedores")
@@ -101,10 +96,69 @@ pg_usr = st.Page("modulos/CadastroUsuario.py", title="Gestão de usuários")
 def render_top_navbar():
     primeiro_nome = st.session_state.usuario_logado.split()[0] if st.session_state.usuario_logado else "Usuário"
     
+    css = """
+    <style>
+    /* 1. Remove barra lateral completamente */
+    [data-testid="stSidebar"], [data-testid="stSidebarCollapsedControl"] { display: none !important; }
+    
+    /* 2. Ajuste de espaço central */
+    .main .block-container { padding-top: 2rem !important; max-width: 98% !important; }
+    
+    /* 3. Estilo da Navbar Escura (Atacando o primeiro container nativo) */
+    .main .block-container > div[data-testid="stVerticalBlock"] > div:first-child > div[data-testid="stHorizontalBlock"] {
+        background-color: #1a2a40;
+        padding: 8px 20px;
+        border-radius: 8px;
+        align-items: center;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        margin-bottom: 25px;
+    }
+    
+    /* 4. Estilo dos botões mestres na barra */
+    .main .block-container > div[data-testid="stVerticalBlock"] > div:first-child > div[data-testid="stHorizontalBlock"] button {
+        background-color: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        color: #adb5bd !important;
+        font-weight: 500 !important;
+        font-size: 15px !important;
+    }
+    .main .block-container > div[data-testid="stVerticalBlock"] > div:first-child > div[data-testid="stHorizontalBlock"] button:hover {
+        color: #20c997 !important;
+        background-color: rgba(255,255,255,0.05) !important;
+    }
+    
+    /* 5. Cor branca para o nome de usuário */
+    .main .block-container > div[data-testid="stVerticalBlock"] > div:first-child > div[data-testid="stHorizontalBlock"] div[data-testid="column"]:last-child button {
+        color: #ffffff !important;
+        font-weight: 700 !important;
+    }
+
+    /* 6. Itens dentro da janela Dropdown */
+    div[data-testid="stPopoverBody"] button {
+        border: none !important;
+        background-color: transparent !important;
+        color: #343a40 !important;
+        text-align: left !important;
+        width: 100% !important;
+        justify-content: flex-start !important;
+        padding: 10px 15px !important;
+        box-shadow: none !important;
+        font-size: 14px !important;
+    }
+    div[data-testid="stPopoverBody"] button:hover {
+        background-color: #f8f9fa !important;
+        color: #20c997 !important;
+    }
+    </style>
+    """
+    st.markdown(css, unsafe_allow_html=True)
+    
+    # Construção das Colunas da Barra Superior
     c_logo, c_op, c_cad, c_tab, c_esp, c_usr = st.columns([2.5, 1.2, 1.2, 1.2, 2.5, 1.5], vertical_alignment="center")
     
     with c_logo:
-        st.markdown(f"<div style='color: white; font-size: 20px; font-weight: 700; display:flex; align-items:center; gap:8px;'>{logo_svg} Gestão Financeira</div>", unsafe_allow_html=True)
+        st.markdown("<div style='color: white; font-size: 20px; font-weight: 700; padding-top: 5px;'><span class='material-symbols-rounded' style='color: #20c997; vertical-align: bottom;'>pie_chart</span> Gestão Financeira</div>", unsafe_allow_html=True)
         
     with c_op:
         with st.popover("Operação ▾", use_container_width=True):
@@ -129,97 +183,32 @@ def render_top_navbar():
             if st.button("Meu perfil"): st.switch_page(pg_perfil)
             if st.session_state.perfil_logado == "Administrador":
                 if st.button("Gestão de usuários"): st.switch_page(pg_usr)
-            st.divider()
+            st.divider() # Linha divisória
             if st.button("Sair do sistema"): realizar_logoff()
-
-# ==========================================
-# MOTOR DE INJEÇÃO JS (À PROVA DE FALHAS)
-# ==========================================
-def aplicar_estilos_forcados():
-    components.html("""
-    <script>
-    setTimeout(() => {
-        const doc = window.parent.document;
-        
-        // 1. INJETAR CSS GLOBAL NO TOPO DO NAVEGADOR
-        if (!doc.getElementById('sistema-saas-css')) {
-            const style = doc.createElement('style');
-            style.id = 'sistema-saas-css';
-            style.innerHTML = `
-                /* Remover elementos nativos do Streamlit */
-                [data-testid="stSidebar"], [data-testid="stHeader"], [data-testid="collapsedControl"] { display: none !important; }
-                .block-container { padding-top: 1.5rem !important; max-width: 98% !important; }
-                
-                /* Estilo do Botão Verde Esmeralda (Login) */
-                .btn-login-verde { background-color: #20c997 !important; border-color: #20c997 !important; color: #1a2a40 !important; font-weight: 700 !important; font-size: 16px !important; }
-                .btn-login-verde:hover { background-color: #17a589 !important; border-color: #17a589 !important; color: #ffffff !important; }
-                
-                /* Estilo da Navbar Azul Marinho */
-                .navbar-azul-marinho { background-color: #1a2a40 !important; padding: 10px 20px !important; border-radius: 8px !important; box-shadow: 0 4px 6px rgba(0,0,0,0.2) !important; margin-bottom: 25px !important; align-items: center !important; }
-                
-                /* Botões Transparentes da Navbar */
-                .btn-nav-transparente { background-color: transparent !important; border: none !important; color: #adb5bd !important; font-weight: 500 !important; font-size: 15px !important; box-shadow: none !important; }
-                .btn-nav-transparente:hover { color: #20c997 !important; background-color: rgba(255,255,255,0.05) !important; }
-                
-                /* Nome de Usuário na Navbar (Branco) */
-                .btn-nav-destaque { color: #ffffff !important; font-weight: 700 !important; }
-                
-                /* Caixas de Menu Suspenso (Dropdowns) */
-                div[data-testid="stPopoverBody"] { background-color: #ffffff !important; border-radius: 8px !important; padding: 5px !important; border: 1px solid #eee !important; box-shadow: 0 8px 16px rgba(0,0,0,0.1) !important;}
-                div[data-testid="stPopoverBody"] button { background-color: transparent !important; color: #1a2a40 !important; border: none !important; width: 100% !important; text-align: left !important; padding: 10px 15px !important; font-weight: 500 !important; box-shadow: none !important;}
-                div[data-testid="stPopoverBody"] button:hover { background-color: #f8f9fa !important; color: #20c997 !important; font-weight: 600 !important;}
-            `;
-            doc.head.appendChild(style);
-        }
-
-        // 2. CAÇAR E PINTAR O BOTÃO DE LOGIN
-        const botoes = doc.querySelectorAll('button');
-        botoes.forEach(btn => {
-            if (btn.innerText.includes('Acessar o sistema')) {
-                btn.classList.add('btn-login-verde');
-            }
-        });
-
-        // 3. CAÇAR E PINTAR A NAVBAR
-        const blocosHorizontais = doc.querySelectorAll('div[data-testid="stHorizontalBlock"]');
-        blocosHorizontais.forEach(bloco => {
-            if (bloco.innerHTML.includes('Gestão Financeira') && bloco.innerHTML.includes('Operação')) {
-                bloco.classList.add('navbar-azul-marinho');
-                
-                const navBtns = bloco.querySelectorAll('button');
-                navBtns.forEach(btn => {
-                    btn.classList.add('btn-nav-transparente');
-                });
-                
-                // Pinta o último botão (Usuário) de branco
-                if (navBtns.length > 0) {
-                    navBtns[navBtns.length - 1].classList.add('btn-nav-destaque');
-                }
-            }
-        });
-    }, 100); // Executa 100ms após a tela carregar para garantir a aplicação
-    </script>
-    """, height=0, width=0)
 
 # ==========================================
 # ORQUESTRADOR CENTRAL
 # ==========================================
 def main():
     if not st.session_state.autenticado:
+        # Modo Deslogado
         nav = st.navigation([pg_login])
         nav.run()
     else:
+        # Modo Logado - Monta todas as páginas disponíveis
         pages = [pg_home, pg_agenda, pg_cartoes, pg_forn, pg_ev, pg_cb, pg_cat, pg_cls, pg_bco, pg_perfil]
         if st.session_state.perfil_logado == "Administrador":
             pages.append(pg_usr)
         
+        # O Motor nativo assume o roteamento real
         nav = st.navigation(pages)
+        
+        # Desenha a Navbar no topo de qualquer página
         render_top_navbar()
         UtilitariosVisuais.aplicar_configuracoes_ui()
-        nav.run()
         
-    # Chama o motor visual indestrutível sempre no final do carregamento
-    aplicar_estilos_forcados()
+        # Executa o conteúdo da página selecionada (Sem erros de Pandas!)
+        nav.run()
 
 if __name__ == "__main__":
     if "banco_verificado" not in st.session_state:

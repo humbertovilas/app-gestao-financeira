@@ -7,6 +7,8 @@ import time
 UtilitariosVisuais.aplicar_configuracoes_ui()
 UtilitariosVisuais.inicializar_estados_modal()
 
+if 'form_cleared' not in st.session_state: st.session_state.form_cleared = False
+
 # ==========================================
 # ACESSO A DADOS (CRUD)
 # ==========================================
@@ -78,7 +80,6 @@ def callback_exclusao(id_usr):
 # ==========================================
 @st.dialog(":material/person_add: Novo usuário")
 def modal_inclusao():
-    UtilitariosVisuais.exibir_mensagens()
     val_nome = "" if st.session_state.form_cleared else ""
     val_email = "" if st.session_state.form_cleared else ""
     st.text_input("Nome completo:", value=val_nome, key=f"inc_nome_usr_{st.session_state.form_reset}")
@@ -98,7 +99,6 @@ def modal_inclusao():
 
 @st.dialog(":material/edit: Editar usuário")
 def modal_alteracao(id_usr, nome, email, perfil, ativo):
-    UtilitariosVisuais.exibir_mensagens()
     val_nome = "" if st.session_state.form_cleared else nome
     val_email = "" if st.session_state.form_cleared else email
     
@@ -120,7 +120,6 @@ def modal_alteracao(id_usr, nome, email, perfil, ativo):
 
 @st.dialog(":material/delete: Excluir usuário")
 def modal_exclusao(id_usr, nome, email):
-    UtilitariosVisuais.exibir_mensagens()
     if email == "admin@sistema.com.br" or email == st.session_state.email_logado:
         st.toast("Bloqueio de segurança: Não é possível excluir o seu próprio usuário ou o Administrador Mestre.", icon="🛡️")
         time.sleep(2.0)
@@ -159,8 +158,9 @@ with c_filtrar:
     if st.button("Filtrar", type="tertiary", icon=":material/search:", use_container_width=True):
         st.session_state.show_f_usr = not st.session_state.show_f_usr; st.rerun()
 with c_inserir:
-    if st.button("Novo Usuário", type="primary", icon=":material/add:", use_container_width=True): 
-        UtilitariosVisuais.preparar_modal(); modal_inclusao()
+    if st.button("Inserir", type="primary", icon=":material/add:", use_container_width=True): 
+        st.session_state.form_cleared = False
+        modal_inclusao()
 
 if st.session_state.show_f_usr:
     with st.container(border=True):
@@ -232,8 +232,10 @@ else:
             c4.markdown(f"<div style='text-align: center;'><span class='{badge_stat}'>{lbl_stat}</span></div>", unsafe_allow_html=True)
             
             if c5.button(" ", icon=":material/edit:", key=f"eu_{id_usr}", help="Editar Acesso"): 
-                UtilitariosVisuais.preparar_modal(); modal_alteracao(int(id_usr), nome, email, perfil, ativo)
+                st.session_state.form_cleared = False
+                modal_alteracao(int(id_usr), nome, email, perfil, ativo)
             if c6.button(" ", icon=":material/delete:", key=f"xu_{id_usr}", help="Remover Acesso"): 
-                UtilitariosVisuais.preparar_modal(); modal_exclusao(int(id_usr), nome, email)
+                st.session_state.form_cleared = False
+                modal_exclusao(int(id_usr), nome, email)
             st.markdown("<hr style='margin: 8px 0; border: 0; border-top: 1px solid #e9ecef;'>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)

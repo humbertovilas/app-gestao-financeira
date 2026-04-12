@@ -91,68 +91,11 @@ class UtilitariosVisuais:
     def aplicar_configuracoes_ui():
         caminho_raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         caminho_css = os.path.join(caminho_raiz, "style.css")
-        st.markdown("<link href='https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0' rel='stylesheet'>", unsafe_allow_html=True)
+        st.sidebar.markdown("<link href='https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0' rel='stylesheet'>", unsafe_allow_html=True)
         try:
             with open(caminho_css, encoding="utf-8") as f:
-                st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+                st.sidebar.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
         except Exception: pass
-
-        # MOTOR DE INJEÇÃO DIRETA DE ESTILO (Inquebrável)
-        motor_botoes_js = """
-        <script>
-        setTimeout(() => {
-            const doc = window.parent.document;
-            const observer = new MutationObserver(() => {
-                const botoes = doc.querySelectorAll('button');
-                botoes.forEach(btn => {
-                    const texto = btn.innerText || "";
-                    
-                    // REGRA 1: BOTÕES DE AÇÃO POSITIVA -> VERDE (#20c997)
-                    if ((texto.includes('Inserir') || texto.includes('Salvar') || texto.includes('Atualizar') || texto.includes('Alterar') || texto.includes('Confirmar')) && !btn.hasAttribute('data-painted-green')) {
-                        btn.setAttribute('data-painted-green', 'true');
-                        btn.style.setProperty('background-color', '#20c997', 'important');
-                        btn.style.setProperty('border-color', '#20c997', 'important');
-                        btn.style.setProperty('color', '#1a2a40', 'important');
-                        btn.style.setProperty('font-weight', '700', 'important');
-                        
-                        btn.addEventListener('mouseenter', () => {
-                            btn.style.setProperty('background-color', '#17a589', 'important');
-                            btn.style.setProperty('border-color', '#17a589', 'important');
-                            btn.style.setProperty('color', '#ffffff', 'important');
-                        });
-                        btn.addEventListener('mouseleave', () => {
-                            btn.style.setProperty('background-color', '#20c997', 'important');
-                            btn.style.setProperty('border-color', '#20c997', 'important');
-                            btn.style.setProperty('color', '#1a2a40', 'important');
-                        });
-                    }
-                    
-                    // REGRA 2: BOTÃO FILTRAR -> NAVY (#1a2a40)
-                    if (texto.includes('Filtrar') && !btn.hasAttribute('data-painted-navy')) {
-                        btn.setAttribute('data-painted-navy', 'true');
-                        btn.style.setProperty('background-color', '#1a2a40', 'important');
-                        btn.style.setProperty('border-color', '#1a2a40', 'important');
-                        btn.style.setProperty('color', '#ffffff', 'important');
-                        btn.style.setProperty('font-weight', '700', 'important');
-                        
-                        btn.addEventListener('mouseenter', () => {
-                            btn.style.setProperty('background-color', '#2c3e50', 'important');
-                            btn.style.setProperty('border-color', '#2c3e50', 'important');
-                            btn.style.setProperty('color', '#20c997', 'important');
-                        });
-                        btn.addEventListener('mouseleave', () => {
-                            btn.style.setProperty('background-color', '#1a2a40', 'important');
-                            btn.style.setProperty('border-color', '#1a2a40', 'important');
-                            btn.style.setProperty('color', '#ffffff', 'important');
-                        });
-                    }
-                });
-            });
-            observer.observe(doc.body, { childList: true, subtree: true });
-        }, 50);
-        </script>
-        """
-        components.html(motor_botoes_js, height=0, width=0)
             
     @staticmethod
     def inicializar_estados_modal():

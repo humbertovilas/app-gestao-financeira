@@ -1,0 +1,316 @@
+/* ==========================================
+   INVERSÃO NATIVA DA BARRA LATERAL (LOGOTIPO NO TOPO)
+   ========================================== */
+[data-testid="stSidebarContent"] {
+    display: flex !important;
+    flex-direction: column !important;
+    position: relative !important;
+    min-height: 100vh !important;
+    padding-bottom: 80px !important; /* Cria um "chão" falso para o menu não atropelar o botão Sair */
+}
+
+[data-testid="stSidebarUserContent"] {
+    order: 1 !important;
+    padding-top: 0px !important;
+    padding-bottom: 0px !important;
+}
+
+[data-testid="stSidebarNav"] {
+    order: 2 !important;
+    padding-top: 10px !important;
+}
+
+/* ==========================================
+   BOTÃO DE SAIR (ISOLADO E CRAVADO NO RODAPÉ)
+   ========================================== */
+/* Esconde a âncora invisível */
+div.element-container:has(#ancora-sair) {
+    display: none !important;
+}
+
+/* Arranca APENAS o botão Sair da ordem natural e fixa no fundo da tela */
+div.element-container:has(#ancora-sair) + div.element-container {
+    position: absolute !important;
+    bottom: 20px !important;
+    left: 15px !important;
+    right: 15px !important;
+    width: auto !important;
+    z-index: 9999 !important;
+}
+
+/* Deixa o botão com cara de menu (sem fundo e sem borda) */
+div.element-container:has(#ancora-sair) + div.element-container button {
+    background-color: transparent !important;
+    border: none !important;
+    color: #adb5bd !important;
+    box-shadow: none !important;
+    font-weight: 500 !important;
+    display: flex !important;
+    justify-content: flex-start !important;
+    padding-left: 10px !important;
+    transition: all 0.2s ease-in-out !important;
+}
+
+/* Acende em alerta suave ao passar o mouse */
+div.element-container:has(#ancora-sair) + div.element-container button:hover {
+    color: #e76f51 !important;
+    background-color: rgba(231, 111, 81, 0.1) !important;
+    border-radius: 6px !important;
+}
+
+/* ==========================================
+   VARIÁVEIS DE CORES E FONTES
+   ========================================== */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+    --cor-fundo: #f4f7f6;
+    --cor-primaria: #1a2a40;
+    --cor-destaque: #20c997;
+    --cor-destaque-hover: #17a589;
+    --cor-perigo: #e76f51;
+    --cor-perigo-hover: #d9534f;
+    --cor-borda: #e9ecef;
+    --cor-texto: #495057;
+}
+
+/* ==========================================
+   ESTRUTURA GLOBAL E FONTE
+   ========================================== */
+html, body, [class*="css"]  {
+    font-family: 'Inter', sans-serif;
+    color: var(--cor-texto);
+}
+
+.stApp {
+    background-color: var(--cor-fundo);
+}
+
+/* ==========================================
+   MENU LATERAL NATIVO (CORES E ESTÉTICA)
+   ========================================== */
+[data-testid="stSidebar"], 
+[data-testid="stSidebar"] > div:first-child {
+    background-color: var(--cor-primaria) !important;
+    border-right: none !important;
+}
+
+[data-testid="stSidebarNav"] span {
+    color: #e9ecef !important;
+    font-weight: 500;
+    font-size: 15px;
+}
+
+[data-testid="stSidebarNavSeparator"] {
+    background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-testid="stSidebarNav"] [data-testid="stSidebarNavLink"][aria-current="page"] {
+    background-color: var(--cor-destaque) !important;
+    border-radius: 6px !important;
+    margin: 0 10px !important;
+}
+
+[data-testid="stSidebarNav"] [data-testid="stSidebarNavLink"][aria-current="page"] span {
+    color: white !important;
+    font-weight: 700 !important;
+}
+
+[data-testid="stSidebarNav"] [data-testid="stSidebarNavLink"]:hover {
+    background-color: rgba(32, 201, 151, 0.2) !important;
+    border-radius: 6px !important;
+    margin: 0 10px !important;
+    transition: 0.3s !important;
+}
+
+/* ==========================================
+   BOTÃO DE RECOLHER MENU (AGRESSIVAMENTE VISÍVEL)
+   ========================================== */
+[data-testid="stSidebarCollapseButton"] {
+    background-color: var(--cor-destaque) !important;
+    border: 2px solid white !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    border-radius: 50% !important;
+}
+
+[data-testid="stSidebarCollapseButton"] svg {
+    fill: white !important;
+    stroke: white !important;
+    color: white !important;
+}
+
+/* ==========================================
+   TÍTULOS E CABEÇALHOS
+   ========================================== */
+.titulo-pagina {
+    color: var(--cor-primaria);
+    font-weight: 700;
+    font-size: 26px;
+    margin-bottom: 5px;
+    padding-bottom: 0px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* ==========================================
+   BOTÕES GERAIS DO SISTEMA
+   ========================================== */
+.stButton > button {
+    border-radius: 6px;
+    font-weight: 600;
+    padding: 0.5rem 1rem;
+    transition: all 0.2s ease-in-out;
+    border: none;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.stButton > button[kind="primary"] {
+    background-color: var(--cor-destaque);
+    color: white;
+}
+
+.stButton > button[kind="primary"]:hover {
+    background-color: var(--cor-destaque-hover);
+    box-shadow: 0 4px 8px rgba(32, 201, 151, 0.3);
+}
+
+.stButton > button[kind="secondary"] {
+    background-color: #f8f9fa;
+    color: var(--cor-primaria);
+    border: 1px solid var(--cor-borda);
+}
+
+.stButton > button[kind="secondary"]:hover {
+    background-color: #e9ecef;
+    color: var(--cor-primaria);
+}
+
+.stButton > button[kind="tertiary"] {
+    background-color: var(--cor-primaria) !important;
+    color: white !important;
+    border: none !important;
+}
+
+.stButton > button[kind="tertiary"] p,
+.stButton > button[kind="tertiary"] span {
+    color: white !important;
+}
+
+.stButton > button[kind="tertiary"]:hover {
+    background-color: #2c3e50 !important;
+    color: white !important;
+    box-shadow: 0 4px 8px rgba(26, 42, 64, 0.3) !important;
+}
+
+/* ==========================================
+   INPUTS E SELECTS
+   ========================================== */
+.stTextInput > div > div > input, 
+.stSelectbox > div > div > div,
+.stNumberInput > div > div > input,
+.stDateInput > div > div > input {
+    border-radius: 6px;
+    border: 1px solid var(--cor-borda);
+    padding: 0.6rem;
+    transition: border-color 0.2s;
+}
+
+.stTextInput > div > div > input:focus, 
+.stSelectbox > div > div > div:focus,
+.stNumberInput > div > div > input:focus,
+.stDateInput > div > div > input:focus {
+    border-color: var(--cor-destaque);
+    box-shadow: 0 0 0 2px rgba(32, 201, 151, 0.2);
+}
+
+/* ==========================================
+   GRELHA DE DADOS (CABEÇALHO)
+   ========================================== */
+.cabecalho-grid {
+    background-color: var(--cor-primaria);
+    color: white;
+    padding: 12px 15px;
+    border-radius: 8px 8px 0 0;
+    font-weight: 600;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+}
+
+/* ==========================================
+   BADGES (NATUREZA, GRUPOS E STATUS)
+   ========================================== */
+.badge-receita {
+    background-color: rgba(32, 201, 151, 0.15);
+    color: #0f8661;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 700;
+    display: inline-block;
+    border: 1px solid rgba(32, 201, 151, 0.3);
+}
+
+.badge-despesa {
+    background-color: rgba(231, 111, 81, 0.15);
+    color: #b3391b;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 700;
+    display: inline-block;
+    border: 1px solid rgba(231, 111, 81, 0.3);
+}
+
+.badge-neutro {
+    background-color: #e9ecef;
+    color: #495057;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 700;
+    display: inline-block;
+    border: 1px solid #ced4da;
+}
+
+.badge-efetivado {
+    background-color: #e6f7f5;
+    color: #2a9d8f;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    display: inline-block;
+    border: 1px solid #2a9d8f;
+    text-transform: uppercase;
+}
+
+.badge-pendente {
+    background-color: #fff5f0;
+    color: #e76f51;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 700;
+    display: inline-block;
+    border: 1px solid #f4a261;
+    text-transform: uppercase;
+}
+
+/* ==========================================
+   OCULTAR CAIXA NATIVA DE UPLOAD DE ARQUIVO
+   ========================================== */
+[data-testid="stUploadedFile"],
+[data-testid="stFileUploaderFile"],
+div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] + div {
+    display: none !important;
+    height: 0px !important;
+    overflow: hidden !important;
+    visibility: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}

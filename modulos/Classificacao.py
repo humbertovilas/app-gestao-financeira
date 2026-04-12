@@ -8,6 +8,21 @@ import base64
 UtilitariosVisuais.aplicar_configuracoes_ui()
 UtilitariosVisuais.inicializar_estados_modal()
 
+if 'form_cleared' not in st.session_state: st.session_state.form_cleared = False
+
+# ==========================================
+# FUNÇÃO LOCAL DE UPLOAD DE ÍCONES
+# ==========================================
+def salvar_icone_upload(upload_arquivo):
+    if upload_arquivo is None: return None
+    caminho_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "Imagens", "Icones")
+    os.makedirs(caminho_dir, exist_ok=True)
+    nome_arquivo = f"icone_{int(time.time())}.png"
+    caminho_completo = os.path.join(caminho_dir, nome_arquivo)
+    with open(caminho_completo, "wb") as f:
+        f.write(upload_arquivo.getbuffer())
+    return nome_arquivo
+
 # ==========================================
 # ACESSO A DADOS (CRUD)
 # ==========================================
@@ -43,7 +58,7 @@ def callback_inclusao(icone_base):
     if remover_icone:
         icone_final = "Sem ícone"
     else:
-        icone_final = UtilitariosVisuais.salvar_icone_upload(upload_arquivo) if upload_arquivo is not None else icone_base
+        icone_final = salvar_icone_upload(upload_arquivo) if upload_arquivo is not None else icone_base
     
     if not nome.strip():
         st.session_state.msg_erro = "O nome da classificação é obrigatório."
@@ -81,7 +96,7 @@ def callback_alteracao(id_cls, icone_atual):
     if remover_icone:
         icone_final = "Sem ícone"
     else:
-        icone_final = UtilitariosVisuais.salvar_icone_upload(upload_arquivo) if upload_arquivo is not None else icone_atual
+        icone_final = salvar_icone_upload(upload_arquivo) if upload_arquivo is not None else icone_atual
     
     if not nome.strip():
         st.session_state.msg_erro = "O nome da classificação é obrigatório."
@@ -188,7 +203,6 @@ def modal_inclusao(nome_base="", id_cat_base=None, nome_cat_base="", tipo_cat_ba
 
 @st.dialog(":material/edit: Editar classificação", width="small")
 def modal_alteracao(id_cls, nome_atual, id_cat_atual, nome_cat_atual, tipo_cat_atual, icone_atual):
-    UtilitariosVisuais.exibir_mensagens()
     df_categorias = obter_categorias()
     opcoes_cat = [f"{r['id']} - {r['nome']} ({r['tipo']})" for _, r in df_categorias.iterrows()]
     str_busca = f"{id_cat_atual} - {nome_cat_atual} ({tipo_cat_atual})"
@@ -243,7 +257,6 @@ def modal_alteracao(id_cls, nome_atual, id_cat_atual, nome_cat_atual, tipo_cat_a
 
 @st.dialog(":material/delete: Excluir classificação", width="small")
 def modal_exclusao(id_cls, nome_atual):
-    UtilitariosVisuais.exibir_mensagens()
     # PROTEÇÃO CONTRA EXCLUSÃO DE CLASSIFICAÇÃO COM EVENTOS
     df_ev = GerenciadorBanco.executar_query("SELECT count(id) as total FROM eventos WHERE id_classificacao = %s", (int(id_cls),))
     if df_ev.iloc[0]['total'] > 0:
@@ -282,7 +295,8 @@ with c_filtrar:
         st.session_state.show_f_cls = not st.session_state.show_f_cls; st.rerun()
 with c_inserir:
     if st.button("Inserir", type="primary", icon=":material/add:", use_container_width=True): 
-        UtilitariosVisuais.preparar_modal(); modal_inclusao()
+        st.session_state.form_cleared = False
+        modal_inclusao()
 
 if st.session_state.show_f_cls:
     with st.container(border=True):
@@ -344,10 +358,13 @@ else:
             c2.markdown(f"<div style='display: flex; align-items: center; gap: 10px;'><span style='color: #495057; font-size: 14px;'>{categoria}</span><span class='{badge}'>{tipo}</span></div>", unsafe_allow_html=True)
             
             if c3.button(" ", icon=":material/content_copy:", key=f"rcl_{id_cls}", help="Replicar", use_container_width=True): 
-                UtilitariosVisuais.preparar_modal(); modal_inclusao(nome, int(id_cat), categoria, tipo, icone)
+                st.session_state.form_cleared = False
+                modal_inclusao(nome, int(id_cat), categoria, tipo, icone)
             if c4.button(" ", icon=":material/edit:", key=f"ecl_{id_cls}", help="Editar", use_container_width=True): 
-                UtilitariosVisuais.preparar_modal(); modal_alteracao(int(id_cls), nome, int(id_cat), categoria, tipo, icone)
+                st.session_state.form_cleared = False
+                modal_alteracao(int(id_cls), nome, int(id_cat), categoria, tipo, icone)
             if c5.button(" ", icon=":material/delete:", key=f"xcl_{id_cls}", help="Excluir", use_container_width=True): 
-                UtilitariosVisuais.preparar_modal(); modal_exclusao(int(id_cls), nome)
+                st.session_state.form_cleared = False
+                modal_exclusao(int(id_cls), nome)
             st.markdown("<hr style='margin: 8px 0; border: 0; border-top: 1px solid #e9ecef;'>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)

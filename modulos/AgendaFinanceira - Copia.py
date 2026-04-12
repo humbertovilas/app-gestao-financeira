@@ -45,7 +45,7 @@ def obter_saldo_anterior(data_ini):
     WHERE l.status = 'Efetivado' AND l.data_efetivacao < %s
     """
     df = GerenciadorBanco.executar_query(query, (data_ini,))
-    return float(df.iloc[0]['saldo']) if df is not None and not df.empty else 0.0
+    return float(df.iloc[0]['saldo']) if not df.empty else 0.0
 
 @st.cache_data(show_spinner=False, ttl=600)
 def carregar_dados(data_ini, data_fim):
@@ -68,8 +68,7 @@ def carregar_dados(data_ini, data_fim):
     WHERE l.data_vencimento >= %s AND l.data_vencimento <= %s
     ORDER BY l.data_vencimento ASC, l.id ASC
     """
-    df = GerenciadorBanco.executar_query(query, (data_ini, data_fim))
-    return df if df is not None else pd.DataFrame()
+    return GerenciadorBanco.executar_query(query, (data_ini, data_fim))
 
 @st.cache_data(show_spinner=False, ttl=3600)
 def obter_auxiliares():
@@ -82,14 +81,7 @@ def obter_auxiliares():
         df_cc = GerenciadorBanco.executar_query("SELECT id, nome, dia_fechamento, dia_vencimento FROM cartoes_credito ORDER BY nome ASC")
     except:
         df_cc = pd.DataFrame(columns=['id', 'nome', 'dia_fechamento', 'dia_vencimento'])
-    
-    # Blindagem para garantir que retornam DataFrames mesmo vazios
-    return (df_ev if df_ev is not None else pd.DataFrame(), 
-            df_cls if df_cls is not None else pd.DataFrame(), 
-            df_bco if df_bco is not None else pd.DataFrame(), 
-            df_cb if df_cb is not None else pd.DataFrame(), 
-            df_cc if df_cc is not None else pd.DataFrame(), 
-            df_forn if df_forn is not None else pd.DataFrame())
+    return df_ev, df_cls, df_bco, df_cb, df_cc, df_forn
 
 # ==========================================
 # 3. CALLBACKS DE NEGÓCIO
@@ -462,9 +454,7 @@ if 'f_ln_evs' not in st.session_state: st.session_state.f_ln_evs = []
 # ==========================================
 # 6. PROCESSAMENTO DOS DADOS (Antes da UI)
 # ==========================================
-# Blindagem do DataFrame: Se retornar None, usa DataFrame vazio.
-df_dados_raw = carregar_dados(st.session_state.f_ln_dt_ini, st.session_state.f_ln_dt_fim)
-df_base = df_dados_raw.copy() if not df_dados_raw.empty else pd.DataFrame()
+df_base = carregar_dados(st.session_state.f_ln_dt_ini, st.session_state.f_ln_dt_fim).copy()
 
 saldo_anterior = obter_saldo_anterior(st.session_state.f_ln_dt_ini)
 entradas_periodo = 0.0
