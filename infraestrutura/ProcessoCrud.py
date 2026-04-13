@@ -18,30 +18,22 @@ class GerenciadorBanco:
 
     @staticmethod
     def inicializar_banco():
-        # UTILIZA CONEXÃO DEDICADA COM AUTOCOMMIT PARA IGNORAR BLOQUEIOS DE TRANSAÇÃO (CACHE BYPASS)
         try:
             conn_setup = psycopg2.connect(st.secrets["DATABASE_URL"])
             conn_setup.autocommit = True
             cursor = conn_setup.cursor()
             
-            # 1. TABELAS DE AUXÍLIO
             cursor.execute('CREATE TABLE IF NOT EXISTS categorias (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, tipo TEXT NOT NULL)')
             cursor.execute('CREATE TABLE IF NOT EXISTS classificacoes (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, id_categoria INTEGER NOT NULL, FOREIGN KEY (id_categoria) REFERENCES categorias (id))')
             cursor.execute('ALTER TABLE classificacoes ADD COLUMN IF NOT EXISTS icone TEXT')
             cursor.execute('CREATE TABLE IF NOT EXISTS eventos (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, id_classificacao INTEGER NOT NULL, FOREIGN KEY (id_classificacao) REFERENCES classificacoes (id))')
             cursor.execute('CREATE TABLE IF NOT EXISTS usuarios (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, email TEXT UNIQUE NOT NULL, senha TEXT NOT NULL, perfil TEXT NOT NULL, ativo BOOLEAN DEFAULT TRUE)')
-            
-            # CRIAÇÃO GARANTIDA FORNECEDORES
             cursor.execute('CREATE TABLE IF NOT EXISTS fornecedores (id SERIAL PRIMARY KEY, nome TEXT NOT NULL)')
 
-            # 2. TABELAS BANCÁRIAS
             cursor.execute('CREATE TABLE IF NOT EXISTS bancos (codigo VARCHAR(10) PRIMARY KEY, nome VARCHAR(150))')
             cursor.execute('CREATE TABLE IF NOT EXISTS contas_bancarias (id SERIAL PRIMARY KEY, numero_conta VARCHAR(20), agencia_codigo VARCHAR(20), agencia_nome VARCHAR(150), banco_codigo VARCHAR(10), endereco_agencia VARCHAR(250))')
-
-            # 3. TABELA DE CARTÕES DE CRÉDITO
             cursor.execute('CREATE TABLE IF NOT EXISTS cartoes_credito (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, limite_total NUMERIC(15,2) NOT NULL, dia_fechamento INTEGER NOT NULL, dia_vencimento INTEGER NOT NULL)')
 
-            # 4. TABELA DE LANÇAMENTOS E ALTERAÇÕES
             cursor.execute('''CREATE TABLE IF NOT EXISTS lancamentos 
                               (id SERIAL PRIMARY KEY, data_digitacao DATE DEFAULT CURRENT_DATE, data_vencimento DATE NOT NULL, 
                                data_efetivacao DATE, valor_previsto NUMERIC(15,2) NOT NULL, valor_realizado NUMERIC(15,2), 
@@ -52,8 +44,12 @@ class GerenciadorBanco:
                                FOREIGN KEY (id_classificacao) REFERENCES classificacoes (id))''')
             
             cursor.execute('ALTER TABLE lancamentos ADD COLUMN IF NOT EXISTS id_fornecedor INTEGER REFERENCES fornecedores(id)')
+            
+            # --- CAMPOS PARA EDIÇÃO EM CASCATA ---
+            cursor.execute('ALTER TABLE lancamentos ADD COLUMN IF NOT EXISTS codigo_parcelamento TEXT')
+            cursor.execute('ALTER TABLE lancamentos ADD COLUMN IF NOT EXISTS intervalo INTEGER DEFAULT 30')
 
-            # 5. ÍNDICES DE ALTA PERFORMANCE
+            # --- ÍNDICES DE ALTA PERFORMANCE ---
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_cat_nome ON categorias (nome)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_cls_nome ON classificacoes (nome)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_ev_nome ON eventos (nome)")
@@ -61,8 +57,8 @@ class GerenciadorBanco:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_lanc_vencimento ON lancamentos (data_vencimento)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_lanc_cartao ON lancamentos (id_cartao_credito)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_lanc_forn ON lancamentos (id_fornecedor)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_lanc_cod_parc ON lancamentos (codigo_parcelamento)")
             
-            # CARGA DE BANCOS INICIAIS
             cursor.execute("SELECT count(codigo) FROM bancos")
             if cursor.fetchone()[0] == 0:
                 bancos = [('001','Banco do Brasil'),('104','Caixa'),('033','Santander'),('341','Itaú'),('237','Bradesco'),('260','Nubank')]
@@ -86,18 +82,64 @@ class GerenciadorBanco:
             st.cache_resource.clear()
             return pd.read_sql_query(query, GerenciadorBanco.obter_conexao(), params=params) if is_select else None
 
+    # ==========================================
+    # MOTOR DE TRANSAÇÃO EM LOTE (ZERO LATÊNCIA)
+    # ==========================================
+    @staticmethod
+    def executar_transacao_lote(lista_comandos):
+        """ Executa múltiplos INSERTS ou UPDATES em uma única viagem ao banco de dados """
+        conn = GerenciadorBanco.obter_conexao()
+        try:
+            cursor = conn.cursor()
+            for query, params in lista_comandos:
+                cursor.execute(query, params)
+            conn.commit()
+            return True
+        except Exception as e:
+            conn.rollback() # Se uma parcela falhar, cancela todas para não quebrar a integridade
+            st.cache_resource.clear()
+            st.error(f"Erro na transação em lote: {e}")
+            return False
+
 class UtilitariosVisuais:
     @staticmethod
     def aplicar_configuracoes_ui():
         caminho_raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         caminho_css = os.path.join(caminho_raiz, "style.css")
-        st.markdown("<link href='https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0' rel='stylesheet'>", unsafe_allow_html=True)
+        
+        css_global = """
+        <link href='https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0' rel='stylesheet'>
+        <style>
+            button[data-testid="baseButton-primary"] {
+                background-color: #20c997 !important;
+                border-color: #20c997 !important;
+                color: #1a2a40 !important;
+                font-weight: 700 !important;
+            }
+            button[data-testid="baseButton-primary"]:hover {
+                background-color: #17a589 !important;
+                border-color: #17a589 !important;
+                color: #ffffff !important;
+            }
+            .btn-global-filtrar {
+                background-color: #1a2a40 !important;
+                border-color: #1a2a40 !important;
+                color: #ffffff !important;
+                font-weight: 700 !important;
+            }
+            .btn-global-filtrar:hover {
+                background-color: #2c3e50 !important;
+                border-color: #2c3e50 !important;
+                color: #20c997 !important;
+            }
+        </style>
+        """
+        st.markdown(css_global, unsafe_allow_html=True)
         try:
             with open(caminho_css, encoding="utf-8") as f:
                 st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
         except Exception: pass
 
-        # MOTOR DE INJEÇÃO DIRETA DE ESTILO (Inquebrável)
         motor_botoes_js = """
         <script>
         setTimeout(() => {
@@ -127,8 +169,8 @@ class UtilitariosVisuais:
                         });
                     }
                     
-                    // REGRA 2: BOTÃO FILTRAR -> NAVY (#1a2a40)
-                    if (texto.includes('Filtrar') && !btn.hasAttribute('data-painted-navy')) {
+                    // REGRA 2: BOTÕES DE CONSULTA (Filtrar e Pesquisar) -> NAVY (#1a2a40)
+                    if ((texto.includes('Filtrar') || texto.includes('Pesquisar')) && !btn.hasAttribute('data-painted-navy')) {
                         btn.setAttribute('data-painted-navy', 'true');
                         btn.style.setProperty('background-color', '#1a2a40', 'important');
                         btn.style.setProperty('border-color', '#1a2a40', 'important');

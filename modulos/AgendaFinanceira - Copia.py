@@ -4,6 +4,7 @@ from datetime import datetime, date, timedelta
 import calendar
 import os
 import time
+import uuid
 from infraestrutura.ProcessoCrud import GerenciadorBanco, UtilitariosVisuais
 
 # ==========================================
@@ -25,6 +26,9 @@ if 'modal_bx_ev' not in st.session_state: st.session_state.modal_bx_ev = None
 if 'modal_bx_vlr' not in st.session_state: st.session_state.modal_bx_vlr = None
 if 'modal_del_id' not in st.session_state: st.session_state.modal_del_id = None
 if 'modal_del_ev' not in st.session_state: st.session_state.modal_del_ev = None
+if 'modal_del_cod_parc' not in st.session_state: st.session_state.modal_del_cod_parc = None
+if 'modal_del_parc_atual' not in st.session_state: st.session_state.modal_del_parc_atual = None
+if 'modal_del_tot_parc' not in st.session_state: st.session_state.modal_del_tot_parc = None
 
 # ==========================================
 # 2. FUNÇÕES DE APOIO E CONSULTAS
@@ -52,7 +56,7 @@ def carregar_dados(data_ini, data_fim):
     query = """
     SELECT 
         l.id, l.data_digitacao, l.data_compra, l.data_vencimento, l.data_efetivacao, l.status,
-        e.nome AS nome_base_evento, l.id_evento, l.id_classificacao,
+        e.nome AS nome_base_evento, l.id_evento, l.id_classificacao, l.parcela_atual, l.total_parcelas, l.codigo_parcelamento, l.intervalo,
         CASE WHEN l.total_parcelas > 1 THEN e.nome || ' (' || l.parcela_atual || '/' || l.total_parcelas || ')' ELSE e.nome END AS evento_exibicao,
         c.nome AS classificacao, c.icone, cat.nome AS categoria, cat.tipo,
         COALESCE(l.valor_realizado, l.valor_previsto) AS valor_final,
@@ -92,10 +96,12 @@ def on_change_intervalo(fr_id, dt_emissao):
 
 def callback_salvar_lancamento(acao="inserir", id_lancamento=None):
     fr_id = st.session_state.get("ln_form_reset")
+    dados_pre = st.session_state.get("modal_dados") 
     dt_digitacao = date.today()
+    
     valor = st.session_state.get(f"ln_valor_{fr_id}", 0.0)
     parcelas = st.session_state.get(f"ln_parcelas_{fr_id}", 1)
-    intervalo = st.session_state.get(f"ln_intervalo_{fr_id}", 1)
+    intervalo = st.session_state.get(f"ln_intervalo_{fr_id}", 30)
     status_tela = st.session_state.get(f"ln_status_{fr_id}", "Pendente")
     obs = st.session_state.get(f"ln_obs_{fr_id}", "")
     modo_evento = st.session_state.get(f"ln_modo_ev_{fr_id}", "Selecionar evento")
@@ -104,7 +110,6 @@ def callback_salvar_lancamento(acao="inserir", id_lancamento=None):
         st.session_state.msg_erro = "O valor deve ser maior que zero."
         return
 
-    # LÓGICA DE CARTÃO DE CRÉDITO, FORNECEDOR E INTERVALOS
     modo_pag = st.session_state.get(f"ln_modo_pag_{fr_id}", "Simplificado")
     id_cc_final = None
     dt_compra_final = None
@@ -116,11 +121,9 @@ def callback_salvar_lancamento(acao="inserir", id_lancamento=None):
         if sel_cc: id_cc_final = int(sel_cc.split(" - ")[0])
         dt_compra_final = st.session_state.get(f"ln_dt_compra_{fr_id}")
         
-        # Recupera as informações do cartão selecionado para calcular vencimentos
         if id_cc_final:
             _, _, _, _, df_cc, _ = obter_auxiliares()
             card_info = df_cc[df_cc['id'] == id_cc_final].iloc[0]
-            
             if dt_compra_final:
                 mes_base, ano_base = dt_compra_final.month, dt_compra_final.year
                 if dt_compra_final.day >= int(card_info['dia_fechamento']):
@@ -130,7 +133,6 @@ def callback_salvar_lancamento(acao="inserir", id_lancamento=None):
                 dia_venc_real = min(int(card_info['dia_vencimento']), last_day)
                 dt_venc_manual = date(ano_base, mes_base, dia_venc_real)
 
-        # Lógica de Fornecedor
         modo_forn = st.session_state.get(f"ln_modo_forn_{fr_id}", "Selecionar fornecedor")
         if modo_forn == "Cadastrar novo":
             nome_forn_novo = st.session_state.get(f"ln_novo_forn_{fr_id}", "").strip()
@@ -152,7 +154,6 @@ def callback_salvar_lancamento(acao="inserir", id_lancamento=None):
                 st.session_state.msg_erro = "Selecione um fornecedor."
                 return
 
-    # RESOLUÇÃO DO EVENTO (Vinculação ou Criação)
     id_evento_final = None
     if modo_evento == "Cadastrar novo":
         nome_novo = st.session_state.get(f"ln_novo_ev_nome_{fr_id}", "").strip()
@@ -173,44 +174,111 @@ def callback_salvar_lancamento(acao="inserir", id_lancamento=None):
             return
         id_evento_final = int(df_ev.iloc[0]['id'])
 
-    # EXECUÇÃO DO BANCO DE DADOS (Edição vs Inserção)
+    comandos_lote = []
+
     if acao == "editar" and id_lancamento:
-        status_final = "Pendente" if dt_venc_manual > dt_digitacao else status_tela
-        val_realizado = valor if status_final == "Efetivado" else None
-        dt_efetivacao = dt_venc_manual if status_final == "Efetivado" else None
-        GerenciadorBanco.executar_query(
-            "UPDATE lancamentos SET data_vencimento = %s, data_compra = %s, data_efetivacao = %s, valor_previsto = %s, valor_realizado = %s, id_evento = %s, status = %s, observacao = %s, id_cartao_credito = %s, id_fornecedor = %s WHERE id = %s", 
-            (dt_venc_manual, dt_compra_final, dt_efetivacao, valor, val_realizado, id_evento_final, status_final, obs, id_cc_final, id_fornecedor_final, id_lancamento), 
-            is_select=False
-        )
+        modo_cascata = st.session_state.get(f"ln_modo_cascata_{fr_id}", "Apenas esta parcela")
+        cod_parc_atual = dados_pre.get('codigo_parcelamento') if dados_pre is not None else None
+        tem_codigo = bool(cod_parc_atual) and str(cod_parc_atual).lower() not in ["none", "nan", "<na>", "nat", ""]
+        
+        if modo_cascata == "Apenas esta parcela" or not tem_codigo:
+            status_final = "Pendente" if dt_venc_manual > dt_digitacao else status_tela
+            val_realizado = float(valor) if status_final == "Efetivado" else None
+            dt_efetivacao = dt_venc_manual if status_final == "Efetivado" else None
+            q_upd = "UPDATE lancamentos SET data_vencimento = %s, data_compra = %s, data_efetivacao = %s, valor_previsto = %s, valor_realizado = %s, id_evento = %s, status = %s, observacao = %s, id_cartao_credito = %s, id_fornecedor = %s, intervalo = %s WHERE id = %s"
+            comandos_lote.append((q_upd, (dt_venc_manual, dt_compra_final, dt_efetivacao, float(valor), val_realizado, int(id_evento_final), status_final, obs, id_cc_final, id_fornecedor_final, int(intervalo), int(id_lancamento))))
+        else:
+            parc_editada_idx = int(dados_pre['parcela_atual'])
+            if modo_cascata == "Esta e as próximas pendentes":
+                df_alvos = GerenciadorBanco.executar_query("SELECT id, parcela_atual FROM lancamentos WHERE codigo_parcelamento = %s AND parcela_atual >= %s AND status = 'Pendente' ORDER BY parcela_atual", (cod_parc_atual, parc_editada_idx))
+            else:
+                df_alvos = GerenciadorBanco.executar_query("SELECT id, parcela_atual FROM lancamentos WHERE codigo_parcelamento = %s ORDER BY parcela_atual", (cod_parc_atual,))
+            
+            if df_alvos is not None and not df_alvos.empty:
+                for _, row_alvo in df_alvos.iterrows():
+                    id_alvo = int(row_alvo['id'])
+                    
+                    if modo_pag == "Cartão de Crédito" and id_cc_final and dt_compra_final:
+                        # CORREÇÃO FATOR UAU: A data de compra (Emissão) é cravada e imutável.
+                        nova_dt_compra = dt_compra_final
+                        # A matemática de faturas avança sempre em meses corridos a partir da parcela.
+                        idx_parcela_real = int(row_alvo['parcela_atual']) - 1
+                        
+                        mes_base, ano_base = dt_compra_final.month, dt_compra_final.year
+                        if dt_compra_final.day >= int(card_info['dia_fechamento']):
+                            mes_base += 1
+                            if mes_base > 12: mes_base, ano_base = 1, ano_base + 1
+                        
+                        mes_fatura = mes_base - 1 + idx_parcela_real
+                        ano_fatura = ano_base + (mes_fatura // 12)
+                        mes_fatura = (mes_fatura % 12) + 1
+                        
+                        _, last_day = calendar.monthrange(ano_fatura, mes_fatura)
+                        nova_dt_venc = date(ano_fatura, mes_fatura, min(int(card_info['dia_vencimento']), last_day))
+                    else:
+                        multiplicador = int(row_alvo['parcela_atual']) - parc_editada_idx
+                        nova_dt_compra = None
+                        nova_dt_venc = dt_venc_manual + timedelta(days=int(intervalo * multiplicador))
+
+                    status_final = "Pendente" if nova_dt_venc > dt_digitacao else "Pendente" 
+                    q_cascata = "UPDATE lancamentos SET data_vencimento = %s, data_compra = %s, valor_previsto = %s, id_evento = %s, status = %s, observacao = %s, id_cartao_credito = %s, id_fornecedor = %s, intervalo = %s WHERE id = %s"
+                    comandos_lote.append((q_cascata, (nova_dt_venc, nova_dt_compra, float(valor), int(id_evento_final), status_final, obs, id_cc_final, id_fornecedor_final, int(intervalo), id_alvo)))
+
     else:
+        codigo_parcelamento_novo = uuid.uuid4().hex[:16] if parcelas > 1 else None
         for i in range(parcelas):
             if modo_pag == "Cartão de Crédito" and id_cc_final and dt_compra_final:
-                data_compra_atual = dt_compra_final + timedelta(days=intervalo * i)
-                mes_base, ano_base = data_compra_atual.month, data_compra_atual.year
-                if data_compra_atual.day >= int(card_info['dia_fechamento']):
+                # CORREÇÃO FATOR UAU: A data de compra (Emissão) é cravada e imutável.
+                data_compra_atual = dt_compra_final
+                
+                mes_base, ano_base = dt_compra_final.month, dt_compra_final.year
+                if dt_compra_final.day >= int(card_info['dia_fechamento']):
                     mes_base += 1
                     if mes_base > 12: mes_base, ano_base = 1, ano_base + 1
-                _, last_day = calendar.monthrange(ano_base, mes_base)
-                data_venc = date(ano_base, mes_base, min(int(card_info['dia_vencimento']), last_day))
+                
+                mes_fatura = mes_base - 1 + i
+                ano_fatura = ano_base + (mes_fatura // 12)
+                mes_fatura = (mes_fatura % 12) + 1
+                
+                _, last_day = calendar.monthrange(ano_fatura, mes_fatura)
+                data_venc = date(ano_fatura, mes_fatura, min(int(card_info['dia_vencimento']), last_day))
             else:
-                data_venc = dt_venc_manual + timedelta(days=intervalo * i)
+                data_compra_atual = None
+                data_venc = dt_venc_manual + timedelta(days=int(intervalo * i))
 
             status_final = "Pendente" if data_venc > dt_digitacao else status_tela
-            val_realizado = valor if status_final == "Efetivado" else None
+            val_realizado = float(valor) if status_final == "Efetivado" else None
             dt_efetivacao = data_venc if status_final == "Efetivado" else None
             
-            GerenciadorBanco.executar_query(
-                "INSERT INTO lancamentos (data_digitacao, data_compra, data_vencimento, data_efetivacao, valor_previsto, valor_realizado, id_evento, id_classificacao, parcela_atual, total_parcelas, status, observacao, id_cartao_credito, id_fornecedor) VALUES (%s, %s, %s, %s, %s, %s, %s, (SELECT id_classificacao FROM eventos WHERE id=%s), %s, %s, %s, %s, %s, %s)", 
-                (dt_digitacao, dt_compra_final, data_venc, dt_efetivacao, valor, val_realizado, id_evento_final, id_evento_final, i+1, parcelas, status_final, obs, id_cc_final, id_fornecedor_final), 
-                is_select=False
-            )
+            q_ins = "INSERT INTO lancamentos (data_digitacao, data_compra, data_vencimento, data_efetivacao, valor_previsto, valor_realizado, id_evento, id_classificacao, parcela_atual, total_parcelas, status, observacao, id_cartao_credito, id_fornecedor, codigo_parcelamento, intervalo) VALUES (%s, %s, %s, %s, %s, %s, %s, (SELECT id_classificacao FROM eventos WHERE id=%s), %s, %s, %s, %s, %s, %s, %s, %s)"
+            comandos_lote.append((q_ins, (dt_digitacao, data_compra_atual, data_venc, dt_efetivacao, float(valor), val_realizado, int(id_evento_final), int(id_evento_final), i+1, parcelas, status_final, obs, id_cc_final, id_fornecedor_final, codigo_parcelamento_novo, int(intervalo))))
     
+    sucesso = GerenciadorBanco.executar_transacao_lote(comandos_lote)
+    if sucesso:
+        st.cache_data.clear() 
+        st.session_state.msg_sucesso_cont = (acao == "inserir")
+        st.session_state.msg_sucesso = (acao != "inserir")
+        if acao != "inserir": st.session_state.modal_ativa = None
+        st.session_state.form_reset += 1
+    else:
+        st.session_state.msg_erro = "Erro de conexão ao processar as parcelas. Tente novamente."
+
+def callback_exclusao(id_l, cod_parc, parc_atual, tot_parc):
+    modo_cascata = st.session_state.get(f"del_modo_cascata_{id_l}", "Apenas esta parcela")
+    tem_codigo = bool(cod_parc) and str(cod_parc).lower() not in ["none", "nan", "<na>", "nat", ""]
+    
+    if int(tot_parc) > 1 and tem_codigo and modo_cascata != "Apenas esta parcela":
+        if modo_cascata == "Esta e as próximas pendentes":
+            GerenciadorBanco.executar_query("DELETE FROM lancamentos WHERE codigo_parcelamento = %s AND parcela_atual >= %s AND status = 'Pendente'", (str(cod_parc), int(parc_atual)), is_select=False)
+        else:
+            GerenciadorBanco.executar_query("DELETE FROM lancamentos WHERE codigo_parcelamento = %s", (str(cod_parc),), is_select=False)
+    else:
+        GerenciadorBanco.executar_query("DELETE FROM lancamentos WHERE id = %s", (int(id_l),), is_select=False)
+        
     st.cache_data.clear() 
-    st.session_state.msg_sucesso_cont = (acao == "inserir")
-    st.session_state.msg_sucesso = (acao != "inserir")
-    if acao != "inserir": st.session_state.modal_ativa = None
+    st.session_state.msg_sucesso = True
     st.session_state.form_reset += 1
+    st.session_state.modal_del_id = None
 
 # ==========================================
 # 4. MODAIS ROTEADAS
@@ -260,25 +328,12 @@ def modal_formulario(acao="inserir", id_lancamento=None, dados_pre=None):
             dt_compra_base = dados_pre['data_compra'] if dados_pre is not None and pd.notna(dados_pre['data_compra']) else date.today()
             data_compra = cc2.date_input("Data exata da compra:", value=dt_compra_base, format="DD/MM/YYYY", key=f"ln_dt_compra_{fr_id}")
             
-            id_cc_sel = int(sel_cc.split(" - ")[0])
-            card_info = df_cc[df_cc['id'] == id_cc_sel].iloc[0]
-            dia_fech, dia_venc = int(card_info['dia_fechamento']), int(card_info['dia_vencimento'])
-            
-            mes_base, ano_base = data_compra.month, data_compra.year
-            if data_compra.day >= dia_fech:
-                mes_base += 1
-                if mes_base > 12: mes_base, ano_base = 1, ano_base + 1
-                    
-            _, last_day = calendar.monthrange(ano_base, mes_base)
-            dt_venc_calculada = date(ano_base, mes_base, min(dia_venc, last_day))
-            
-            st.info(f"💳 O sistema identificou que esta compra entrará na fatura com vencimento base em **{dt_venc_calculada.strftime('%d/%m/%Y')}**.")
-            st.session_state[f"ln_data_venc_{fr_id}"] = dt_venc_calculada
-            st.session_state[f"ln_status_{fr_id}"] = "Pendente"
-            
             col_p, col_i, col_v = st.columns(3)
+            habilita_interv = not (acao == "editar") or (dados_pre is not None and dados_pre.get('total_parcelas', 1) > 1)
+            v_int_base = int(dados_pre.get('intervalo', 30)) if dados_pre is not None else 30
+            
             col_p.number_input("Total de parcelas (Cartão):", min_value=1, max_value=240, step=1, disabled=(acao=="editar"), key=f"ln_parcelas_{fr_id}")
-            col_i.number_input("Intervalo de dias:", min_value=1, step=1, disabled=(acao=="editar"), key=f"ln_intervalo_{fr_id}")
+            col_i.number_input("Intervalo de dias:", min_value=1, step=1, value=v_int_base, disabled=not habilita_interv, key=f"ln_intervalo_{fr_id}")
             col_v.selectbox("Status inicial:", ["Pendente"], disabled=True, key=f"ln_status_bloq")
 
             st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
@@ -295,8 +350,11 @@ def modal_formulario(acao="inserir", id_lancamento=None, dados_pre=None):
 
     else:
         col_p, col_i, col_v, col_s = st.columns(4)
+        habilita_interv = not (acao == "editar") or (dados_pre is not None and dados_pre.get('total_parcelas', 1) > 1)
+        v_int_base = int(dados_pre.get('intervalo', 30)) if dados_pre is not None else 30
+        
         col_p.number_input("Total de parcelas:", min_value=1, max_value=240, step=1, disabled=(acao=="editar"), key=f"ln_parcelas_{fr_id}")
-        col_i.number_input("Intervalo de dias:", min_value=1, step=1, disabled=(acao=="editar"), key=f"ln_intervalo_{fr_id}", on_change=on_change_intervalo, args=(fr_id, v_data_dig))
+        col_i.number_input("Intervalo de dias:", min_value=1, step=1, value=v_int_base, disabled=not habilita_interv, key=f"ln_intervalo_{fr_id}", on_change=on_change_intervalo, args=(fr_id, v_data_dig))
         
         v_dt_venc_base = dados_pre['data_vencimento'] if dados_pre is not None else date.today()
         if f"ln_data_venc_{fr_id}" not in st.session_state: st.session_state[f"ln_data_venc_{fr_id}"] = v_dt_venc_base
@@ -322,6 +380,15 @@ def modal_formulario(acao="inserir", id_lancamento=None, dados_pre=None):
         with c_cl: st.selectbox("Vincule a uma classificação:", op_class, key=f"ln_novo_ev_class_{fr_id}")
 
     st.text_input("Observações / Justificativas opcionais:", key=f"ln_obs_{fr_id}")
+    
+    if acao == "editar" and dados_pre is not None and dados_pre.get('total_parcelas', 1) > 1:
+        cod_parc_check = dados_pre.get('codigo_parcelamento')
+        tem_codigo_ui = bool(cod_parc_check) and str(cod_parc_check).lower() not in ["none", "nan", "<na>", "nat", ""]
+        if tem_codigo_ui:
+            st.markdown("<hr style='margin: 15px 0 5px 0; border: 0; border-top: 2px dashed #20c997;'>", unsafe_allow_html=True)
+            st.markdown("<span style='font-size: 14px; font-weight: 700; color: #1a2a40;'>Opções de Edição em Lote (Cascata)</span>", unsafe_allow_html=True)
+            st.radio("Aplicar alterações em:", ["Apenas esta parcela", "Esta e as próximas pendentes", "Todas as parcelas (Sobrescrever)"], index=1, horizontal=False, key=f"ln_modo_cascata_{fr_id}")
+
     st.markdown("<br>", unsafe_allow_html=True)
     b_sal, b_fec = st.columns(2)
     with b_sal:
@@ -426,17 +493,29 @@ def modal_baixa(id_l, ev_nome, v_orig):
         if st.button("Fechar", type="secondary", use_container_width=True): st.session_state.modal_bx_id = None; st.rerun()
 
 @st.dialog(":material/delete: Excluir lançamento", width="small")
-def modal_exclusao(id_l, ev_nome):
+def modal_exclusao(id_l, ev_nome, cod_parc, parc_atual, tot_parc):
     st.error(f"Excluir permanentemente a parcela: **{ev_nome}**?")
+    
+    tem_codigo = bool(cod_parc) and str(cod_parc).lower() not in ["none", "nan", "<na>", "nat", ""]
+    
+    if int(tot_parc) > 1 and tem_codigo:
+        st.markdown("<hr style='margin: 10px 0; border: 0; border-top: 1px dashed #dc3545;'>", unsafe_allow_html=True)
+        st.markdown("<span style='font-size: 14px; font-weight: 700; color: #1a2a40;'>Opções de Exclusão em Lote:</span>", unsafe_allow_html=True)
+        st.radio("Aplicar exclusão em:", 
+                 ["Apenas esta parcela", "Esta e as próximas pendentes", "Todas as parcelas da série"], 
+                 index=0, horizontal=False, key=f"del_modo_cascata_{id_l}")
+        st.markdown("<br>", unsafe_allow_html=True)
+        
     b_conf, b_canc = st.columns(2)
     with b_conf:
         if st.button("Confirmar", type="primary", use_container_width=True):
-            GerenciadorBanco.executar_query("DELETE FROM lancamentos WHERE id = %s", (id_l,), is_select=False)
-            st.cache_data.clear() 
-            st.session_state.msg_sucesso = True; st.session_state.form_reset += 1
-            st.session_state.modal_del_id = None; st.rerun()
+            callback_exclusao(id_l, cod_parc, parc_atual, tot_parc)
+            st.toast("Exclusão realizada com sucesso!", icon="✅")
+            time.sleep(1.0)
+            st.rerun()
     with b_canc:
-        if st.button("Fechar", type="secondary", use_container_width=True): st.session_state.modal_del_id = None; st.rerun()
+        if st.button("Fechar", type="secondary", use_container_width=True): 
+            st.session_state.modal_del_id = None; st.rerun()
 
 # ==========================================
 # 5. INICIALIZAÇÃO DE ESTADOS E DATAS
@@ -646,12 +725,21 @@ if not df.empty:
                 st.session_state.modal_bx_id = None
                 st.session_state.modal_del_id = row['id']
                 st.session_state.modal_del_ev = row['evento_exibicao']
+                
+                val_cod = row['codigo_parcelamento']
+                st.session_state.modal_del_cod_parc = val_cod if pd.notna(val_cod) else None
+                
+                st.session_state.modal_del_parc_atual = row['parcela_atual']
+                st.session_state.modal_del_tot_parc = row['total_parcelas']
                 st.rerun()
                 
         st.markdown("<hr style='margin: 5px 0; border: 0; border-top: 1px solid #eee;'>", unsafe_allow_html=True)
 else: st.info("Nenhum lançamento encontrado neste período ou para o filtro selecionado.")
 
 # MOTOR CENTRAL DE RENDERIZAÇÃO DE MODAIS
-if st.session_state.modal_ativa: modal_formulario(st.session_state.modal_ativa, st.session_state.modal_id, st.session_state.modal_dados)
-elif st.session_state.modal_bx_id is not None: modal_baixa(st.session_state.modal_bx_id, st.session_state.modal_bx_ev, st.session_state.modal_bx_vlr)
-elif st.session_state.modal_del_id is not None: modal_exclusao(st.session_state.modal_del_id, st.session_state.modal_del_ev)
+if st.session_state.modal_ativa: 
+    modal_formulario(st.session_state.modal_ativa, st.session_state.modal_id, st.session_state.modal_dados)
+elif st.session_state.modal_bx_id is not None: 
+    modal_baixa(st.session_state.modal_bx_id, st.session_state.modal_bx_ev, st.session_state.modal_bx_vlr)
+elif st.session_state.modal_del_id is not None: 
+    modal_exclusao(st.session_state.modal_del_id, st.session_state.modal_del_ev, st.session_state.modal_del_cod_parc, st.session_state.modal_del_parc_atual, st.session_state.modal_del_tot_parc)

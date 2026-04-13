@@ -180,9 +180,10 @@ def aplicar_estilos_forcados():
             }
         });
 
-        // 3. CAÇAR E PINTAR A NAVBAR
+        // 3. CAÇAR E PINTAR A NAVBAR (E LIMPAR O LIXO DO CACHE DOM DO REACT)
         const blocosHorizontais = doc.querySelectorAll('div[data-testid="stHorizontalBlock"]');
         blocosHorizontais.forEach(bloco => {
+            // Se for a Navbar verdadeira (tem os nomes corretos)
             if (bloco.innerHTML.includes('Gestão Financeira') && bloco.innerHTML.includes('Operação')) {
                 bloco.classList.add('navbar-azul-marinho');
                 
@@ -195,9 +196,13 @@ def aplicar_estilos_forcados():
                 if (navBtns.length > 0) {
                     navBtns[navBtns.length - 1].classList.add('btn-nav-destaque');
                 }
+            } else {
+                // O SEGREDO DO BUGFIX ESTÁ AQUI:
+                // Remove a classe caso o Streamlit tenha reciclado a DIV para a tela de Login
+                bloco.classList.remove('navbar-azul-marinho');
             }
         });
-    }, 100); // Executa 100ms após a tela carregar para garantir a aplicação
+    }, 100);
     </script>
     """, height=0, width=0)
 
