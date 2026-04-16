@@ -21,56 +21,24 @@ class GerenciadorBanco:
 
     @classmethod
     def inicializar_banco(cls):
-        """Garante a existência das tabelas, chaves e índices de alta performance."""
+        """Garante a existência das tabelas estruturais no Neon DB a ferro e fogo."""
         conn = cls.obter_conexao()
         if not conn: return
         try:
             conn.autocommit = True
             cursor = conn.cursor()
-            
-            # 1. Criação das Tabelas com Integridade Referencial (Restaurado do BKP)
-            queries_tabelas = [
+            queries = [
                 "CREATE TABLE IF NOT EXISTS categorias (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, tipo TEXT NOT NULL);",
-                "CREATE TABLE IF NOT EXISTS classificacoes (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, id_categoria INTEGER NOT NULL REFERENCES categorias(id), icone TEXT);",
-                "CREATE TABLE IF NOT EXISTS eventos (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, id_classificacao INTEGER NOT NULL REFERENCES classificacoes(id));",
-                "CREATE TABLE IF NOT EXISTS usuarios (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, email TEXT UNIQUE NOT NULL, senha TEXT NOT NULL, perfil TEXT NOT NULL, ativo BOOLEAN DEFAULT TRUE);",
+                "CREATE TABLE IF NOT EXISTS classificacoes (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, id_categoria INTEGER, icone TEXT);",
+                "CREATE TABLE IF NOT EXISTS eventos (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, id_classificacao INTEGER);",
                 "CREATE TABLE IF NOT EXISTS fornecedores (id SERIAL PRIMARY KEY, nome TEXT NOT NULL);",
                 "CREATE TABLE IF NOT EXISTS bancos (codigo VARCHAR(10) PRIMARY KEY, nome VARCHAR(150));",
                 "CREATE TABLE IF NOT EXISTS contas_bancarias (id SERIAL PRIMARY KEY, numero_conta VARCHAR(20), agencia_codigo VARCHAR(20), agencia_nome VARCHAR(150), banco_codigo VARCHAR(10), endereco_agencia VARCHAR(250));",
                 "CREATE TABLE IF NOT EXISTS cartoes_credito (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, limite_total NUMERIC(15,2) NOT NULL, dia_fechamento INTEGER NOT NULL, dia_vencimento INTEGER NOT NULL);",
-                """CREATE TABLE IF NOT EXISTS lancamentos (
-                    id SERIAL PRIMARY KEY, data_digitacao DATE DEFAULT CURRENT_DATE, data_vencimento DATE NOT NULL, 
-                    data_efetivacao DATE, valor_previsto NUMERIC(15,2) NOT NULL, valor_realizado NUMERIC(15,2), 
-                    id_evento INTEGER NOT NULL REFERENCES eventos(id), id_classificacao INTEGER NOT NULL REFERENCES classificacoes(id), 
-                    parcela_atual INTEGER DEFAULT 1, total_parcelas INTEGER DEFAULT 1, status TEXT NOT NULL DEFAULT 'Pendente', 
-                    observacao TEXT, id_conta_bancaria INTEGER, id_cartao_credito INTEGER, data_compra DATE,
-                    id_fornecedor INTEGER REFERENCES fornecedores(id), codigo_parcelamento TEXT, intervalo INTEGER DEFAULT 30
-                );"""
+                "CREATE TABLE IF NOT EXISTS lancamentos (id SERIAL PRIMARY KEY, data_digitacao DATE DEFAULT CURRENT_DATE, data_vencimento DATE NOT NULL, data_efetivacao DATE, valor_previsto NUMERIC(15,2) NOT NULL, valor_realizado NUMERIC(15,2), id_evento INTEGER, id_classificacao INTEGER, parcela_atual INTEGER DEFAULT 1, total_parcelas INTEGER DEFAULT 1, status TEXT NOT NULL DEFAULT 'Pendente', observacao TEXT, id_conta_bancaria INTEGER, id_cartao_credito INTEGER, data_compra DATE, id_fornecedor INTEGER, codigo_parcelamento TEXT, intervalo INTEGER DEFAULT 30);"
             ]
-            for q in queries_tabelas:
+            for q in queries:
                 cursor.execute(q)
-
-            # 2. Injeção de Índices de Alta Performance para o Motor em Lote (Restaurado do BKP)
-            queries_indices = [
-                "CREATE INDEX IF NOT EXISTS idx_cat_nome ON categorias (nome);",
-                "CREATE INDEX IF NOT EXISTS idx_cls_nome ON classificacoes (nome);",
-                "CREATE INDEX IF NOT EXISTS idx_ev_nome ON eventos (nome);",
-                "CREATE INDEX IF NOT EXISTS idx_forn_nome ON fornecedores (nome);",
-                "CREATE INDEX IF NOT EXISTS idx_lanc_vencimento ON lancamentos (data_vencimento);",
-                "CREATE INDEX IF NOT EXISTS idx_lanc_cartao ON lancamentos (id_cartao_credito);",
-                "CREATE INDEX IF NOT EXISTS idx_lanc_forn ON lancamentos (id_fornecedor);",
-                "CREATE INDEX IF NOT EXISTS idx_lanc_cod_parc ON lancamentos (codigo_parcelamento);"
-            ]
-            for q in queries_indices:
-                cursor.execute(q)
-
-            # 3. Carga Automática de Bancos Febraban (Restaurado do BKP)
-            cursor.execute("SELECT count(codigo) FROM bancos")
-            if cursor.fetchone()[0] == 0:
-                bancos = [('001','Banco do Brasil'),('104','Caixa'),('033','Santander'),('341','Itaú'),('237','Bradesco'),('260','Nubank')]
-                for c, n in bancos: 
-                    cursor.execute("INSERT INTO bancos (codigo, nome) VALUES (%s, %s)", (c, n))
-            
             cursor.close()
         except Exception as e:
             st.error(f"Erro na inicialização estrutural: {e}")
@@ -167,21 +135,19 @@ class UtilitariosVisuais:
 
     @staticmethod
     def injetar_motor_visual():
-        """Motor JavaScript (MutationObserver) com blindagem de ícones nativos (Mantido da Atualização V7)."""
+        """Motor JavaScript (MutationObserver) para padronização global de UI."""
         js_code = """
         <script>
         const observer = new MutationObserver((mutations) => {
             const buttons = window.parent.document.querySelectorAll('button');
             buttons.forEach(btn => {
                 const txt = btn.innerText.trim();
-                
-                if(['Salvar', 'Confirmar', 'Inserir', 'Atualizar'].some(k => txt.includes(k))) {
+                if(['Salvar', 'Confirmar', 'Inserir', 'Atualizar'].includes(txt)) {
                     btn.style.backgroundColor = '#20c997';
                     btn.style.color = 'white';
                     btn.style.border = 'none';
                 }
-                
-                if(['Filtrar', 'Pesquisar'].some(k => txt.includes(k))) {
+                if(['Filtrar', 'Pesquisar'].includes(txt)) {
                     btn.style.backgroundColor = '#1a2a40';
                     btn.style.color = 'white';
                     btn.style.border = 'none';
@@ -200,14 +166,9 @@ class UtilitariosVisuais:
         if 'msg_erro' not in st.session_state: st.session_state.msg_erro = ""
 
     @staticmethod
-    @st.cache_data(show_spinner=False, max_entries=100)
-    def obter_imagem_base64(caminho_relativo):
-        """Lê um arquivo de imagem físico e converte para base64 HTML (Restaurado do BKP com cache de RAM)."""
-        caminho_raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        caminho_absoluto = os.path.join(caminho_raiz, caminho_relativo)
-        try:
-            if os.path.exists(caminho_absoluto):
-                with open(caminho_absoluto, "rb") as img_file:
-                    return base64.b64encode(img_file.read()).decode()
-        except Exception: pass
-        return ""
+    def obter_imagem_base64(caminho):
+        """Lê um arquivo de imagem físico e converte para base64 HTML."""
+        if os.path.exists(caminho):
+            with open(caminho, "rb") as f:
+                return base64.b64encode(f.read()).decode()
+        return None

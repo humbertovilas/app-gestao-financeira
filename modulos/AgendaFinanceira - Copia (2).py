@@ -31,17 +31,16 @@ if 'modal_del_cod_parc' not in st.session_state: st.session_state.modal_del_cod_
 if 'modal_del_parc_atual' not in st.session_state: st.session_state.modal_del_parc_atual = None
 if 'modal_del_tot_parc' not in st.session_state: st.session_state.modal_del_tot_parc = None
 
-# Mensageiros Globais Blindados (Anti-Fantasma)
-if 'msg_sucesso_global' not in st.session_state: st.session_state.msg_sucesso_global = False
-if 'msg_erro_global' not in st.session_state: st.session_state.msg_erro_global = ""
-if 'msg_sucesso_cont' not in st.session_state: st.session_state.msg_sucesso_cont = False
-
 # ==========================================
 # 2. FUNÇÕES DE APOIO E CONSULTAS
 # ==========================================
 @st.cache_data(max_entries=100, show_spinner=False)
 def get_cached_icon(icone_file):
-    """Lê a imagem física apenas uma vez e a mantém em cache (RAM)."""
+    """
+    MOTOR DE ALTA PERFORMANCE (Zero Latency Grid):
+    Lê a imagem física apenas uma vez e a mantém em cache (RAM).
+    Elimina a latência de leitura de disco ao abrir modais.
+    """
     if pd.notna(icone_file) and icone_file != "Sem ícone":
         caminho = os.path.join("Imagens", "Icones", icone_file)
         if os.path.exists(caminho):
@@ -118,18 +117,13 @@ def obter_auxiliares_leves():
     return df_cls, df_bco, df_cb, df_cc
 
 # ==========================================
-# 3. CALLBACKS DE NEGÓCIO BLINDADOS (SEQUENCIAIS)
+# 3. CALLBACKS DE NEGÓCIO
 # ==========================================
 def on_change_intervalo(fr_id, dt_emissao):
     intervalo = st.session_state.get(f"ln_intervalo_{fr_id}", 1)
     if intervalo > 1: st.session_state[f"ln_data_venc_{fr_id}"] = dt_emissao + timedelta(days=intervalo)
 
-def processar_salvamento_lancamento(acao="inserir", id_lancamento=None):
-    """
-    Motor Procedural de Salvamento: Executa de forma linear após os widgets
-    entregarem seus valores finais, eliminando bugs de dessincronização de estado.
-    Retorna True se sucesso, False se falha de validação.
-    """
+def callback_salvar_lancamento(acao="inserir", id_lancamento=None):
     fr_id = st.session_state.get("ln_form_reset")
     dados_pre = st.session_state.get("modal_dados") 
     dt_digitacao = date.today()
@@ -141,8 +135,8 @@ def processar_salvamento_lancamento(acao="inserir", id_lancamento=None):
     modo_evento = st.session_state.get(f"ln_modo_ev_{fr_id}", "Selecionar evento")
     
     if valor <= 0:
-        st.session_state.msg_erro_global = "O valor deve ser maior que zero."
-        return False
+        st.session_state.msg_erro = "O valor deve ser maior que zero."
+        return
 
     modo_pag = st.session_state.get(f"ln_modo_pag_{fr_id}", "Simplificado")
     
@@ -177,8 +171,8 @@ def processar_salvamento_lancamento(acao="inserir", id_lancamento=None):
         if modo_forn == "Cadastrar novo":
             nome_forn_novo = st.session_state.get(f"ln_novo_forn_{fr_id}", "").strip()
             if not nome_forn_novo:
-                st.session_state.msg_erro_global = "Preencha o nome do novo fornecedor."
-                return False
+                st.session_state.msg_erro = "Preencha o nome do novo fornecedor."
+                return
             df_check_forn = GerenciadorBanco.executar_query("SELECT id FROM fornecedores WHERE nome ILIKE %s", (nome_forn_novo,))
             if not df_check_forn.empty:
                 id_fornecedor_final = int(df_check_forn.iloc[0]['id'])
@@ -187,52 +181,43 @@ def processar_salvamento_lancamento(acao="inserir", id_lancamento=None):
                 df_f = GerenciadorBanco.executar_query("SELECT id FROM fornecedores WHERE nome = %s ORDER BY id DESC LIMIT 1", (nome_forn_novo,))
                 id_fornecedor_final = int(df_f.iloc[0]['id'])
         else:
-            # BLINDAGEM DO FORNECEDOR NA EDIÇÃO
             forn_sel_raw = st.session_state.get(f"ln_forn_sel_{fr_id}")
             forn_sel_id = extrair_id_seguro(forn_sel_raw)
-            
             if forn_sel_id:
                 id_fornecedor_final = int(forn_sel_id)
-            elif acao == "editar" and dados_pre is not None and pd.notna(dados_pre['id_fornecedor']):
-                id_fornecedor_final = int(dados_pre['id_fornecedor'])
             else:
-                st.session_state.msg_erro_global = "Selecione um fornecedor."
-                return False
+                st.session_state.msg_erro = "Selecione um fornecedor."
+                return
 
     id_evento_final = None
     if modo_evento == "Cadastrar novo":
         nome_novo = st.session_state.get(f"ln_novo_ev_nome_{fr_id}", "").strip()
         class_nova = st.session_state.get(f"ln_novo_ev_class_{fr_id}")
         if not nome_novo:
-            st.session_state.msg_erro_global = "Preencha o nome do novo evento."
-            return False
+            st.session_state.msg_erro = "Preencha o nome do novo evento."
+            return
         df_c = GerenciadorBanco.executar_query("SELECT id FROM classificacoes WHERE nome = %s LIMIT 1", (class_nova,))
         id_class_id = int(df_c.iloc[0]['id'])
         GerenciadorBanco.executar_query("INSERT INTO eventos (nome, id_classificacao) VALUES (%s, %s)", (nome_novo, id_class_id), is_select=False)
         df_e = GerenciadorBanco.executar_query("SELECT id FROM eventos WHERE nome = %s ORDER BY id DESC LIMIT 1", (nome_novo,))
         id_evento_final = int(df_e.iloc[0]['id'])
     else:
-        # BLINDAGEM DO EVENTO NA EDIÇÃO
         evento_sel_raw = st.session_state.get(f"ln_evento_sel_{fr_id}")
         evento_sel_id = extrair_id_seguro(evento_sel_raw)
-        
         if evento_sel_id:
             id_evento_final = int(evento_sel_id)
-        elif acao == "editar" and dados_pre is not None and pd.notna(dados_pre['id_evento']):
-            id_evento_final = int(dados_pre['id_evento'])
         else:
-            st.session_state.msg_erro_global = "Selecione um evento válido."
-            return False
+            st.session_state.msg_erro = "Selecione um evento válido."
+            return
 
     comandos_lote = []
 
     if acao == "editar" and id_lancamento:
-        # INTEGRAÇÃO DE CASCATA RESTAURADA DA V6 ORIGINAL
-        modo_cascata = st.session_state.get(f"ln_modo_cascata_{fr_id}", "Editar somente esta")
+        modo_cascata = st.session_state.get(f"ln_modo_cascata_{fr_id}", "Apenas esta parcela")
         cod_parc_atual = dados_pre.get('codigo_parcelamento') if dados_pre is not None else None
         tem_codigo = bool(cod_parc_atual) and str(cod_parc_atual).lower() not in ["none", "nan", "<na>", "nat", ""]
         
-        if modo_cascata == "Editar somente esta" or not tem_codigo:
+        if modo_cascata == "Apenas esta parcela" or not tem_codigo:
             status_final = "Pendente" if dt_venc_manual > dt_digitacao else status_tela
             val_realizado = float(valor) if status_final == "Efetivado" else None
             dt_efetivacao = dt_venc_manual if status_final == "Efetivado" else None
@@ -240,9 +225,9 @@ def processar_salvamento_lancamento(acao="inserir", id_lancamento=None):
             comandos_lote.append((q_upd, (dt_venc_manual, dt_compra_final, dt_efetivacao, float(valor), val_realizado, int(id_evento_final), status_final, obs, id_cc_final, id_fornecedor_final, int(intervalo), int(id_lancamento))))
         else:
             parc_editada_idx = int(dados_pre['parcela_atual'])
-            if modo_cascata == "Editar todas as pendentes":
+            if modo_cascata == "Esta e as próximas pendentes":
                 df_alvos = GerenciadorBanco.executar_query("SELECT id, parcela_atual FROM lancamentos WHERE codigo_parcelamento = %s AND parcela_atual >= %s AND status = 'Pendente' ORDER BY parcela_atual", (cod_parc_atual, parc_editada_idx))
-            elif modo_cascata == "Editar todas (incluindo efetivadas)":
+            else:
                 df_alvos = GerenciadorBanco.executar_query("SELECT id, parcela_atual FROM lancamentos WHERE codigo_parcelamento = %s ORDER BY parcela_atual", (cod_parc_atual,))
             
             if df_alvos is not None and not df_alvos.empty:
@@ -305,33 +290,28 @@ def processar_salvamento_lancamento(acao="inserir", id_lancamento=None):
     if sucesso:
         carregar_dados.clear()
         obter_saldo_anterior.clear()
-        
-        if acao == "inserir":
-            st.session_state.msg_sucesso_cont = True 
-        else:
-            st.session_state.msg_sucesso_global = True 
-            st.session_state.modal_ativa = None
-            
+        st.session_state.msg_sucesso_cont = (acao == "inserir")
+        st.session_state.msg_sucesso = (acao != "inserir")
+        if acao != "inserir": st.session_state.modal_ativa = None
         st.session_state.form_reset += 1
-        return True
     else:
-        st.session_state.msg_erro_global = "Erro de conexão ao processar as parcelas. Tente novamente."
-        return False
+        st.session_state.msg_erro = "Erro de conexão ao processar as parcelas. Tente novamente."
 
 def callback_exclusao(id_l, cod_parc, parc_atual, tot_parc):
-    modo_cascata = st.session_state.get(f"del_modo_cascata_{id_l}", "Excluir somente esta")
+    modo_cascata = st.session_state.get(f"del_modo_cascata_{id_l}", "Apenas esta parcela")
     tem_codigo = bool(cod_parc) and str(cod_parc).lower() not in ["none", "nan", "<na>", "nat", ""]
     
-    if int(tot_parc) > 1 and tem_codigo and modo_cascata != "Excluir somente esta":
-        if modo_cascata == "Excluir todas as pendentes":
+    if int(tot_parc) > 1 and tem_codigo and modo_cascata != "Apenas esta parcela":
+        if modo_cascata == "Esta e as próximas pendentes":
             GerenciadorBanco.executar_query("DELETE FROM lancamentos WHERE codigo_parcelamento = %s AND parcela_atual >= %s AND status = 'Pendente'", (str(cod_parc), int(parc_atual)), is_select=False)
-        elif modo_cascata == "Excluir todas (incluindo efetivadas)":
+        else:
             GerenciadorBanco.executar_query("DELETE FROM lancamentos WHERE codigo_parcelamento = %s", (str(cod_parc),), is_select=False)
     else:
         GerenciadorBanco.executar_query("DELETE FROM lancamentos WHERE id = %s", (int(id_l),), is_select=False)
         
     carregar_dados.clear()
     obter_saldo_anterior.clear()
+    st.session_state.msg_sucesso = True
     st.session_state.form_reset += 1
     st.session_state.modal_del_id = None
 
@@ -387,19 +367,16 @@ def modal_formulario(acao="inserir", id_lancamento=None, dados_pre=None):
             st.radio("Origem do fornecedor:", ["Selecionar fornecedor", "Cadastrar novo"], horizontal=True, label_visibility="collapsed", key=f"ln_modo_forn_{fr_id}")
             
             if st.session_state.get(f"ln_modo_forn_{fr_id}", "Selecionar fornecedor") == "Selecionar fornecedor":
+                default_forn_id = None
+                if dados_pre is not None and pd.notna(dados_pre['id_fornecedor']):
+                    default_forn_id = int(dados_pre['id_fornecedor'])
                 
-                # ÂNCORA VISUAL (Resolve o erro do Searchbox em branco na Edição)
-                if acao == "editar" and dados_pre is not None and pd.notna(dados_pre['id_fornecedor']):
-                    st.caption(f"Fornecedor atual: **{dados_pre['nome_fornecedor']}**")
-                    ph_forn = "🔎 Pesquise para alterar o fornecedor..."
-                else:
-                    st.caption("Fornecedor selecionado:")
-                    ph_forn = "🔎 Digite para buscar o fornecedor..."
-                
+                st.caption("Fornecedor selecionado:")
                 st_searchbox(
                     GerenciadorBanco.buscar_fornecedores_dinamico,
+                    default=default_forn_id,
                     key=f"ln_forn_sel_{fr_id}",
-                    placeholder=ph_forn
+                    placeholder="🔎 Digite para buscar o fornecedor..."
                 )
             else:
                 st.text_input("Nome do novo fornecedor:", key=f"ln_novo_forn_{fr_id}")
@@ -426,30 +403,23 @@ def modal_formulario(acao="inserir", id_lancamento=None, dados_pre=None):
     
     if st.session_state.get(f"ln_modo_ev_{fr_id}", "Selecionar evento") == "Selecionar evento":
         with c_ev: 
+            default_ev_id = None
+            if dados_pre is not None and pd.notna(dados_pre['id_evento']):
+                default_ev_id = int(dados_pre['id_evento'])
             
-            # ÂNCORA VISUAL PARA EVENTOS
-            if acao == "editar" and dados_pre is not None and pd.notna(dados_pre['id_evento']):
-                st.caption(f"Evento atual: **{dados_pre['nome_base_evento']}**")
-                ph_ev = "🔎 Pesquise para alterar o evento..."
-            else:
-                st.caption("Evento originador (credor/devedor):")
-                ph_ev = "🔎 Digite para buscar o evento..."
-            
+            st.caption("Evento originador (credor/devedor):")
             evento_sel_raw = st_searchbox(
                 GerenciadorBanco.buscar_eventos_dinamico,
+                default=default_ev_id,
                 key=f"ln_evento_sel_{fr_id}",
-                placeholder=ph_ev
+                placeholder="🔎 Digite para buscar o evento..."
             )
         with c_cl:
             nome_cl_sync = ""
             evento_sel_id_ui = extrair_id_seguro(evento_sel_raw)
-            
             if evento_sel_id_ui:
                 df_sync = GerenciadorBanco.executar_query("SELECT c.nome FROM classificacoes c INNER JOIN eventos e ON e.id_classificacao = c.id WHERE e.id = %s LIMIT 1", (int(evento_sel_id_ui),))
                 if not df_sync.empty: nome_cl_sync = df_sync.iloc[0]['nome']
-            elif acao == "editar" and dados_pre is not None:
-                nome_cl_sync = dados_pre['classificacao']
-                
             st.text_input("Classificação vinculada:", value=nome_cl_sync, disabled=True)
     else:
         with c_ev: st.text_input("Nome do novo evento:", key=f"ln_novo_ev_nome_{fr_id}")
@@ -457,37 +427,30 @@ def modal_formulario(acao="inserir", id_lancamento=None, dados_pre=None):
 
     st.text_input("Observações / Justificativas opcionais:", key=f"ln_obs_{fr_id}")
     
-    # RECONSTRUÇÃO DA INTERFACE DE CASCATA DA IMAGEM
     if acao == "editar" and dados_pre is not None and dados_pre.get('total_parcelas', 1) > 1:
         cod_parc_check = dados_pre.get('codigo_parcelamento')
         tem_codigo_ui = bool(cod_parc_check) and str(cod_parc_check).lower() not in ["none", "nan", "<na>", "nat", ""]
         if tem_codigo_ui:
             st.markdown("<hr style='margin: 15px 0 5px 0; border: 0; border-top: 2px dashed #20c997;'>", unsafe_allow_html=True)
-            st.markdown("<span style='font-size: 16px; font-weight: 700;'>⚠️ Atenção! Esta é uma transação fixa</span><br><span style='font-size: 15px;'>Você deseja:</span>", unsafe_allow_html=True)
-            
-            opcoes_cascata = ["Editar somente esta", "Editar todas as pendentes", "Editar todas (incluindo efetivadas)"]
-            st.radio("Opções de edição:", opcoes_cascata, index=1, horizontal=False, key=f"ln_modo_cascata_{fr_id}", label_visibility="collapsed")
+            st.markdown("<span style='font-size: 14px; font-weight: 700; color: #1a2a40;'>Opções de Edição em Lote (Cascata)</span>", unsafe_allow_html=True)
+            st.radio("Aplicar alterações em:", ["Apenas esta parcela", "Esta e as próximas pendentes", "Todas as parcelas (Sobrescrever)"], index=1, horizontal=False, key=f"ln_modo_cascata_{fr_id}")
 
     st.markdown("<br>", unsafe_allow_html=True)
     b_sal, b_fec = st.columns(2)
-    
-    # MOTOR DE SALVAMENTO PROCEDURAL (Imune a Conflitos de Callback)
     with b_sal:
-        if st.button("Salvar", type="primary", use_container_width=True):
-            if processar_salvamento_lancamento(acao, id_lancamento):
-                st.rerun() # Sucesso! Fecha a modal e re-renderiza o Grid limpo
+        st.button("Salvar", type="primary", use_container_width=True, on_click=callback_salvar_lancamento, args=(acao, id_lancamento))
     with b_fec:
         if st.button("Fechar", type="secondary", use_container_width=True):
-            st.session_state.modal_ativa = None
-            st.rerun()
+            st.session_state.modal_ativa = None; st.rerun()
 
-    # Tratamento de Erros e Sucessos locais dentro da Modal
     if st.session_state.get("msg_sucesso_cont"):
-        st.toast("Operação realizada com sucesso!", icon="✅")
-        st.session_state.msg_sucesso_cont = False
-    if st.session_state.get("msg_erro_global"):
-        st.toast(st.session_state.msg_erro_global, icon="❌")
-        st.session_state.msg_erro_global = ""
+        st.toast("Operação realizada com sucesso!", icon="✅"); time.sleep(2.0)
+        st.session_state.msg_sucesso_cont = False; st.rerun()
+    elif st.session_state.get("msg_sucesso"):
+        st.toast("Operação realizada com sucesso!", icon="✅"); time.sleep(2.0)
+        st.session_state.msg_sucesso = False; st.rerun()
+    elif st.session_state.get("msg_erro"):
+        st.toast(st.session_state.msg_erro, icon="❌"); st.session_state.msg_erro = ""
 
 @st.dialog(":material/check_circle: Conciliar lançamento", width="small")
 def modal_baixa(id_l, ev_nome, v_orig):
@@ -573,10 +536,8 @@ def modal_baixa(id_l, ev_nome, v_orig):
             carregar_dados.clear()
             obter_saldo_anterior.clear()
             
-            st.session_state.msg_sucesso_global = True
-            st.session_state.form_reset += 1
-            st.session_state.modal_bx_id = None
-            st.rerun()
+            st.session_state.msg_sucesso = True; st.session_state.form_reset += 1
+            st.session_state.modal_bx_id = None; st.rerun()
     with b_canc:
         if st.button("Fechar", type="secondary", use_container_width=True): st.session_state.modal_bx_id = None; st.rerun()
 
@@ -588,17 +549,18 @@ def modal_exclusao(id_l, ev_nome, cod_parc, parc_atual, tot_parc):
     
     if int(tot_parc) > 1 and tem_codigo:
         st.markdown("<hr style='margin: 10px 0; border: 0; border-top: 1px dashed #dc3545;'>", unsafe_allow_html=True)
-        st.markdown("<span style='font-size: 16px; font-weight: 700;'>⚠️ Atenção! Esta é uma transação fixa</span><br><span style='font-size: 15px;'>Você deseja:</span>", unsafe_allow_html=True)
-        
-        opcoes_cascata_del = ["Excluir somente esta", "Excluir todas as pendentes", "Excluir todas (incluindo efetivadas)"]
-        st.radio("Opções de exclusão:", opcoes_cascata_del, index=0, horizontal=False, key=f"del_modo_cascata_{id_l}", label_visibility="collapsed")
+        st.markdown("<span style='font-size: 14px; font-weight: 700; color: #1a2a40;'>Opções de Exclusão em Lote:</span>", unsafe_allow_html=True)
+        st.radio("Aplicar exclusão em:", 
+                 ["Apenas esta parcela", "Esta e as próximas pendentes", "Todas as parcelas da série"], 
+                 index=0, horizontal=False, key=f"del_modo_cascata_{id_l}")
         st.markdown("<br>", unsafe_allow_html=True)
         
     b_conf, b_canc = st.columns(2)
     with b_conf:
         if st.button("Confirmar", type="primary", use_container_width=True):
             callback_exclusao(id_l, cod_parc, parc_atual, tot_parc)
-            st.session_state.msg_sucesso_global = True
+            st.toast("Exclusão realizada com sucesso!", icon="✅")
+            time.sleep(1.0)
             st.rerun()
     with b_canc:
         if st.button("Fechar", type="secondary", use_container_width=True): 
@@ -653,8 +615,10 @@ cor_proj = "#20c997" if saldo_projetado >= 0 else "#dc3545"
 c_tit, c_fil, c_ins, c_mar = st.columns([5, 1.5, 1.5, 3])
 with c_tit: st.markdown("### :material/calendar_month: Agenda Financeira")
 with c_fil:
+    # Removido icon=":material/search:" para que o JS volte a identificar "Filtrar"
     if st.button("Filtrar", type="tertiary", use_container_width=True): st.session_state.show_filtros_lanc = not st.session_state.show_filtros_lanc; st.rerun()
 with c_ins:
+    # Removido icon=":material/add:" para o JS identificar perfeitamente
     if st.button("Inserir", type="primary", use_container_width=True): 
         st.session_state.modal_bx_id = None
         st.session_state.modal_del_id = None
@@ -728,6 +692,7 @@ def renderizar_painel_filtros():
                     st.session_state.f_ln_evs = v_evs
                     st.rerun()
             else:
+                # Removido icon=":material/search:" para não cegar o JS global
                 if st.button("Pesquisar", type="tertiary", use_container_width=True):
                     st.session_state.f_ln_dt_ini = v_dt_ini
                     st.session_state.f_ln_dt_fim = v_dt_fim
@@ -762,6 +727,7 @@ if not df.empty:
         badge_s = "badge-efetivado" if row['status'].lower() == 'efetivado' else "badge-pendente"
         c[2].markdown(f"<div style='text-align: center;'><span class='{badge_s}'>{row['status']}</span></div>", unsafe_allow_html=True)
         
+        # Consumindo a imagem em cache (RAM) ao invés do disco rígido
         icone_file = row['icone']
         html_i = ""
         b64 = get_cached_icon(icone_file)
@@ -825,20 +791,10 @@ if not df.empty:
         st.markdown("<hr style='margin: 5px 0; border: 0; border-top: 1px solid #eee;'>", unsafe_allow_html=True)
 else: st.info("Nenhum lançamento encontrado neste período ou para o filtro selecionado.")
 
-# ==========================================
-# 8. MOTOR CENTRAL DE RENDERIZAÇÃO DE MODAIS
-# ==========================================
+# MOTOR CENTRAL DE RENDERIZAÇÃO DE MODAIS
 if st.session_state.modal_ativa: 
     modal_formulario(st.session_state.modal_ativa, st.session_state.modal_id, st.session_state.modal_dados)
 elif st.session_state.modal_bx_id is not None: 
     modal_baixa(st.session_state.modal_bx_id, st.session_state.modal_bx_ev, st.session_state.modal_bx_vlr)
 elif st.session_state.modal_del_id is not None: 
     modal_exclusao(st.session_state.modal_del_id, st.session_state.modal_del_ev, st.session_state.modal_del_cod_parc, st.session_state.modal_del_parc_atual, st.session_state.modal_del_tot_parc)
-
-# TOASTS GLOBAIS BLINDADOS
-if st.session_state.get("msg_sucesso_global"):
-    st.toast("Operação realizada com sucesso!", icon="✅")
-    st.session_state.msg_sucesso_global = False
-if st.session_state.get("msg_erro_global"):
-    st.toast(st.session_state.msg_erro_global, icon="❌")
-    st.session_state.msg_erro_global = ""

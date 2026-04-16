@@ -16,7 +16,7 @@ def carregar_meus_dados(email):
 # INTERFACE PRINCIPAL DO MÓDULO
 # ==========================================
 def renderizar_meu_perfil():
-    st.markdown("<h3 class='titulo-pagina'><span class='material-symbols-rounded' style='vertical-align: bottom; color: #20c997;'>person</span> Meu perfil</h3>", unsafe_allow_html=True)
+    st.markdown("### :material/person: Meu perfil")
     st.markdown("<p style='color: #6c757d; font-size: 14px; margin-bottom: 25px;'>Gerencie suas informações pessoais e credenciais de acesso.</p>", unsafe_allow_html=True)
     
     # Validação de sessão ativa

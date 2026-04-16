@@ -115,13 +115,13 @@ def modal_exclusao(id_forn, nome_forn):
 # ==========================================
 c_tit, c_fil, c_ins, c_mar = st.columns([5, 1.5, 1.5, 3])
 with c_tit: 
-    st.markdown("<h3 class='titulo-pagina'><span class='material-symbols-rounded'>store</span> Fornecedores</h3>", unsafe_allow_html=True)
+    st.markdown("### :material/store: Fornecedores")
 with c_fil:
-    if st.button("Filtrar", type="tertiary", icon=":material/search:", use_container_width=True): 
+    if st.button("Filtrar", type="tertiary", use_container_width=True): 
         st.session_state.show_filtros_forn = not st.session_state.show_filtros_forn
         st.rerun()
 with c_ins:
-    if st.button("Inserir", type="primary", icon=":material/add:", use_container_width=True):
+    if st.button("Inserir", type="primary", use_container_width=True):
         st.session_state.modal_del_id_forn = None
         st.session_state.modal_forn_ativa = "inserir"
         st.session_state.modal_forn_id = None

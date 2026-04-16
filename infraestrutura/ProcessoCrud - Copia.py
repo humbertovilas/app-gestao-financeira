@@ -45,11 +45,11 @@ class GerenciadorBanco:
             
             cursor.execute('ALTER TABLE lancamentos ADD COLUMN IF NOT EXISTS id_fornecedor INTEGER REFERENCES fornecedores(id)')
             
-            # --- NOVOS CAMPOS PARA EDIÇÃO EM CASCATA (FASE 1) ---
+            # --- CAMPOS PARA EDIÇÃO EM CASCATA ---
             cursor.execute('ALTER TABLE lancamentos ADD COLUMN IF NOT EXISTS codigo_parcelamento TEXT')
             cursor.execute('ALTER TABLE lancamentos ADD COLUMN IF NOT EXISTS intervalo INTEGER DEFAULT 30')
 
-            # --- ÍNDICES DE ALTA PERFORMANCE (BLINDAGEM CONTRA LATÊNCIA) ---
+            # --- ÍNDICES DE ALTA PERFORMANCE ---
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_cat_nome ON categorias (nome)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_cls_nome ON classificacoes (nome)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_ev_nome ON eventos (nome)")
@@ -83,7 +83,7 @@ class GerenciadorBanco:
             return pd.read_sql_query(query, GerenciadorBanco.obter_conexao(), params=params) if is_select else None
 
     # ==========================================
-    # NOVO MOTOR DE TRANSAÇÃO EM LOTE (ZERO LATÊNCIA)
+    # MOTOR DE TRANSAÇÃO EM LOTE (ZERO LATÊNCIA)
     # ==========================================
     @staticmethod
     def executar_transacao_lote(lista_comandos):
@@ -148,6 +148,8 @@ class UtilitariosVisuais:
                 const botoes = doc.querySelectorAll('button');
                 botoes.forEach(btn => {
                     const texto = btn.innerText || "";
+                    
+                    // REGRA 1: BOTÕES DE AÇÃO POSITIVA -> VERDE (#20c997)
                     if ((texto.includes('Inserir') || texto.includes('Salvar') || texto.includes('Atualizar') || texto.includes('Alterar') || texto.includes('Confirmar')) && !btn.hasAttribute('data-painted-green')) {
                         btn.setAttribute('data-painted-green', 'true');
                         btn.style.setProperty('background-color', '#20c997', 'important');
@@ -167,7 +169,8 @@ class UtilitariosVisuais:
                         });
                     }
                     
-                    if (texto.includes('Filtrar') && !btn.hasAttribute('data-painted-navy')) {
+                    // REGRA 2: BOTÕES DE CONSULTA (Filtrar e Pesquisar) -> NAVY (#1a2a40)
+                    if ((texto.includes('Filtrar') || texto.includes('Pesquisar')) && !btn.hasAttribute('data-painted-navy')) {
                         btn.setAttribute('data-painted-navy', 'true');
                         btn.style.setProperty('background-color', '#1a2a40', 'important');
                         btn.style.setProperty('border-color', '#1a2a40', 'important');

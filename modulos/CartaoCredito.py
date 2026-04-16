@@ -274,12 +274,12 @@ def modal_faturas(id_cartao, nome_cartao):
 # 5. INTERFACE PRINCIPAL
 # ==========================================
 c_tit, c_fil, c_ins, c_mar = st.columns([5, 1.5, 1.5, 3])
-with c_tit: st.markdown("<h3 class='titulo-pagina'><span class='material-symbols-rounded'>credit_card</span> Cartões de crédito</h3>", unsafe_allow_html=True)
+with c_tit: st.markdown("### :material/credit_card: Cartões de crédito")
 with c_fil:
-    if st.button("Filtrar", type="tertiary", icon=":material/search:", use_container_width=True):
+    if st.button("Filtrar", type="tertiary", use_container_width=True):
         st.session_state.show_filtros_cc = not st.session_state.show_filtros_cc; st.rerun()
 with c_ins:
-    if st.button("Inserir", type="primary", icon=":material/add:", use_container_width=True):
+    if st.button("Inserir", type="primary", use_container_width=True):
         st.session_state.modal_cc_ativa, st.session_state.modal_cc_id, st.session_state.modal_cc_dados = "inserir", None, None; st.rerun()
 
 if st.session_state.show_filtros_cc:

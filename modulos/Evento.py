@@ -138,7 +138,7 @@ def modal_exclusao(id_evento, nome_evento):
 # 4. INTERFACE PRINCIPAL
 # ==========================================
 c_tit, c_fil, c_ins, c_mar = st.columns([5, 1.5, 1.5, 3])
-with c_tit: st.markdown("<h3 class='titulo-pagina'><span class='material-symbols-rounded'>event</span> Cadastro de eventos</h3>", unsafe_allow_html=True)
+with c_tit: st.markdown("### :material/event: Cadastro de eventos")
 with c_fil:
     if st.button("Filtrar", type="tertiary", icon=":material/search:", use_container_width=True):
         st.session_state.show_filtros_ev = not st.session_state.show_filtros_ev; st.rerun()

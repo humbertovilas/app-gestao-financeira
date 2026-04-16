@@ -102,7 +102,7 @@ def modal_exclusao(id_cb, nome_cb):
             if st.button("Fechar", type="secondary", use_container_width=True): st.session_state.modal_del_id_cb = None; st.rerun()
 
 c_tit, c_fil, c_ins, c_mar = st.columns([5, 1.5, 1.5, 3])
-with c_tit: st.markdown("<h3 class='titulo-pagina'><span class='material-symbols-rounded'>account_balance</span> Central de Contas Bancárias</h3>", unsafe_allow_html=True)
+with c_tit: st.markdown("### :material/account_balance: Central de Contas Bancárias")
 with c_fil:
     if st.button("Filtrar", type="tertiary", icon=":material/search:", use_container_width=True): st.session_state.show_filtros_cb = not st.session_state.show_filtros_cb; st.rerun()
 with c_ins:

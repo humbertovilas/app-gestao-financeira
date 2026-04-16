@@ -80,11 +80,11 @@ def modal_exclusao(codigo, nome_bco):
             if st.button("Fechar", type="secondary", use_container_width=True): st.session_state.modal_del_id_bco = None; st.rerun()
 
 c_tit, c_fil, c_ins, c_mar = st.columns([5, 1.5, 1.5, 3])
-with c_tit: st.markdown("<h3 class='titulo-pagina'><span class='material-symbols-rounded'>museum</span> Instituições Bancárias</h3>", unsafe_allow_html=True)
+with c_tit: st.markdown("### :material/museum: Instituições Bancárias")
 with c_fil:
-    if st.button("Filtrar", type="tertiary", icon=":material/search:", use_container_width=True): st.session_state.show_filtros_bco = not st.session_state.show_filtros_bco; st.rerun()
+    if st.button("Filtrar", type="tertiary", use_container_width=True): st.session_state.show_filtros_bco = not st.session_state.show_filtros_bco; st.rerun()
 with c_ins:
-    if st.button("Inserir", type="primary", icon=":material/add:", use_container_width=True): st.session_state.modal_bco_ativa, st.session_state.modal_bco_id, st.session_state.modal_bco_dados = "inserir", None, None; st.rerun()
+    if st.button("Inserir", type="primary", use_container_width=True): st.session_state.modal_bco_ativa, st.session_state.modal_bco_id, st.session_state.modal_bco_dados = "inserir", None, None; st.rerun()
 
 if st.session_state.show_filtros_bco:
     with st.container(border=True):

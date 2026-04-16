@@ -289,7 +289,7 @@ if 'f_cls_cat' not in st.session_state or isinstance(st.session_state.f_cls_cat,
 if 'show_f_cls' not in st.session_state: st.session_state.show_f_cls = False
 
 c_titulo, c_filtrar, c_inserir, c_margem = st.columns([5, 1.5, 1.5, 3])
-with c_titulo: st.markdown("<h3 class='titulo-pagina'><span class='material-symbols-rounded'>account_tree</span> Cadastro de classificações</h3>", unsafe_allow_html=True)
+with c_titulo: st.markdown("### :material/account_tree: Cadastro de classificações")
 with c_filtrar:
     if st.button("Filtrar", type="tertiary", icon=":material/search:", use_container_width=True):
         st.session_state.show_f_cls = not st.session_state.show_f_cls; st.rerun()

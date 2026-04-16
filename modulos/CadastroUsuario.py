@@ -153,12 +153,12 @@ if 'f_usr_stat' not in st.session_state: st.session_state.f_usr_stat = "Todos os
 if 'show_f_usr' not in st.session_state: st.session_state.show_f_usr = False
 
 c_titulo, c_filtrar, c_inserir, c_margem = st.columns([5, 1.5, 1.5, 3])
-with c_titulo: st.markdown("<h3 class='titulo-pagina'><span class='material-symbols-rounded'>manage_accounts</span> Gestão de Acessos</h3>", unsafe_allow_html=True)
+with c_titulo: st.markdown("### :material/manage_accounts: Gestão de Acessos")
 with c_filtrar:
-    if st.button("Filtrar", type="tertiary", icon=":material/search:", use_container_width=True):
+    if st.button("Filtrar", type="tertiary", use_container_width=True):
         st.session_state.show_f_usr = not st.session_state.show_f_usr; st.rerun()
 with c_inserir:
-    if st.button("Inserir", type="primary", icon=":material/add:", use_container_width=True): 
+    if st.button("Inserir", type="primary", use_container_width=True): 
         st.session_state.form_cleared = False
         modal_inclusao()
 
@@ -182,9 +182,9 @@ if st.session_state.show_f_usr:
                 st.session_state.f_usr_pesq = v_pesq
                 st.session_state.f_usr_perf = v_perf
                 st.session_state.f_usr_stat = v_stat
-                st.button("Pesquisar", type="tertiary", icon=":material/search:", use_container_width=True, disabled=True)
+                st.button("Pesquisar", type="tertiary", use_container_width=True, disabled=True)
             else:
-                if st.button("Pesquisar", type="tertiary", icon=":material/search:", use_container_width=True):
+                if st.button("Pesquisar", type="tertiary", use_container_width=True):
                     st.session_state.f_usr_pesq = v_pesq
                     st.session_state.f_usr_perf = v_perf
                     st.session_state.f_usr_stat = v_stat
